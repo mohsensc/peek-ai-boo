@@ -19,7 +19,7 @@ $(BUILD)/unit: test/unit.cpp $(LIB_SRC)
 
 test: $(BUILD)/unit $(BUILD)/peekaboo-hook
 	$(BUILD)/unit
-	python3 test/integration.py $(BUILD)/peekaboo-hook
+	PYTHONDONTWRITEBYTECODE=1 python3 test/integration.py $(BUILD)/peekaboo-hook
 
 clean:
 	rm -rf $(BUILD)

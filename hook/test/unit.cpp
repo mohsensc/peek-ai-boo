@@ -49,6 +49,10 @@ void test_scan_tool_response_becomes_null() {
                                big + "\"}";
     const auto r = hook::scan(input);
     check(r.ok, "tool_response.ok");
+    // tool_response always gets replaced, even when -- as here -- it isn't
+    // the reason hook_json ends up over the 256 KiB cap: that's still a
+    // cut, and trunc says so.
+    check(r.trunc, "tool_response.sets_trunc");
     check(r.hook_json.find("\"tool_response\":null") != std::string::npos, "tool_response.nulled");
     check(r.hook_json.size() < 1000, "tool_response.small_output");
     check(r.scalars.session_id && *r.scalars.session_id == "s1", "tool_response.session_id_still_captured");
@@ -270,11 +274,34 @@ void test_envelope_sends_nothing_for_bad_input() {
     check(!hook::build_envelope(empty_session, opts).has_value(), "no_send.empty_session_id");
 }
 
+void test_envelope_hook_is_json_null_on_drop() {
+    // End to end: a payload that actually trips the 256 KiB cap, spliced
+    // through build_envelope. scan.hook_json is the raw text "null" (4
+    // bytes, unquoted) -- build_envelope must splice it as the JSON literal
+    // null, not as the string "null", or Event.parse gets a wrong type.
+    std::string input = "{\"session_id\":\"s\",\"hook_event_name\":\"e\"";
+    const std::string chunk(4096, 'q');
+    for (int i = 0; i < 100; ++i) input += ",\"k" + std::to_string(i) + "\":\"" + chunk + "\"";
+    input += "}";
+    const auto scan = hook::scan(input);
+    check(scan.hook_json == "null", "hook_null.scan_dropped");
+
+    hook::EnvelopeOptions opts;
+    opts.client = hook::Client::claude;
+    opts.ts_ms = 1;
+    const auto line = hook::build_envelope(scan, opts);
+    check(line.has_value(), "hook_null.line_built");
+    if (!line) return;
+    check(line->find("\"hook\":null") != std::string::npos, "hook_null.unquoted_literal, line=" + *line);
+    check(line->find("\"hook\":\"null\"") == std::string::npos, "hook_null.not_a_string");
+}
+
 void test_envelope() {
     test_verb_table();
     test_wants_decision();
     test_envelope_field_omission();
     test_envelope_sends_nothing_for_bad_input();
+    test_envelope_hook_is_json_null_on_drop();
 }
 
 // ---------------------------------------------------------------- term --
