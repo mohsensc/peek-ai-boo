@@ -1,12 +1,19 @@
 import Foundation
 import PeekCore
 
-/// Focuses the terminal behind a session on click. Always claims the row
-/// (this is the whole point of clicking a session), so a failed jump just
-/// leaves a note instead of falling through to another feature.
+/// Focuses the terminal behind a session on click. Claims the row only when
+/// there's actually somewhere to jump to (`plan.handles`), so a session with
+/// no reachable terminal falls through to another feature instead of always
+/// eating the click regardless of slot order.
 final class TerminalJump: Feature {
     func open(_ session: Session, app: AppModel) -> Bool {
         let plan = JumpPlan.make(term: session.term, cwd: session.cwd)
+        guard plan.handles else {
+            if case .none(let reason) = plan {
+                app.setNote(session.id, reason)
+            }
+            return false
+        }
         let key = session.id
         DispatchQueue.global(qos: .userInitiated).async {
             let note = TerminalJump.run(plan)

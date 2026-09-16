@@ -9,6 +9,13 @@ public enum JumpPlan: Sendable, Equatable {
     case terminalApp(script: String)
     case none(reason: String)
 
+    /// False for `.none`, so a click handler can tell a real jump from a
+    /// note-only outcome instead of always claiming the click.
+    public var handles: Bool {
+        if case .none = self { return false }
+        return true
+    }
+
     public static func make(term: Term, cwd: String?) -> JumpPlan {
         // cmux first: it sets TERM_PROGRAM=ghostty too, so this has to beat
         // the ghostty check below.

@@ -57,6 +57,13 @@ import Testing
     @Test func emptyTermHasNoTerminalInfo() {
         #expect(JumpPlan.make(term: Term(), cwd: nil) == .none(reason: "no terminal info"))
     }
+
+    @Test func handlesIsFalseOnlyForNone() {
+        #expect(JumpPlan.none(reason: "no terminal info").handles == false)
+        #expect(JumpPlan.cmux(cli: "/path/cmux", socket: nil, commands: []).handles)
+        #expect(JumpPlan.ghostty(script: "").handles)
+        #expect(JumpPlan.terminalApp(script: "").handles)
+    }
 }
 
 @Suite struct AppleScriptTextTests {
