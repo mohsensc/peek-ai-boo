@@ -182,11 +182,26 @@ def _max_string_bytes(value):
     return 0
 
 
+_RANDOM_PAYLOADS_SEED = 20260916
+
+
 def test_random_payloads(n=200):
+    # events.sock has no delivery guarantee -- design.md gives it 2ms for
+    # connect plus write and calls a miss silent, so on a loaded box some
+    # of these (deliberately oversized) payloads legitimately never make it
+    # over the wire. That's expected, not a scanner bug, so it's checked as
+    # a floor (90%, well under the worst seen in practice -- 196/200 across
+    # dozens of runs while pinning this down), not an exact count. What
+    # must always hold is the thing this test actually exists to catch: a
+    # line the hook did finish sending is well-formed JSON, every time --
+    # the protocol is newline-terminated lines, so a send cut short by the
+    # budget shows up to fake_app as no line at all, never a truncated one
+    # (see fake_app._read_line), and can't land here as a parse failure.
     d = run_dir()
     sock = fake_app.bind_listen(os.path.join(d, "events.sock"))
-    rng = random.Random(20260916)
-    ok = 0
+    rng = random.Random(_RANDOM_PAYLOADS_SEED)
+    delivered = 0
+    corrupt = 0
     worst = 0
     try:
         for i in range(n):
@@ -213,12 +228,16 @@ def test_random_payloads(n=200):
             try:
                 obj = json.loads(line)
             except ValueError:
+                corrupt += 1
                 continue
+            delivered += 1
             worst = max(worst, _max_string_bytes(obj.get("hook")))
-            ok += 1
     finally:
         sock.close()
-    check("random_payloads.all_parsed", ok == n, "%d/%d parsed" % (ok, n))
+    check("random_payloads.no_corrupt_lines", corrupt == 0,
+          "%d corrupt, seed=%d" % (corrupt, _RANDOM_PAYLOADS_SEED))
+    check("random_payloads.delivery_floor", delivered >= n * 0.9,
+          "%d/%d delivered, seed=%d" % (delivered, n, _RANDOM_PAYLOADS_SEED))
     check("random_payloads.cut_bound", worst <= 4096 + 3, "worst=%d" % worst)
 
 
