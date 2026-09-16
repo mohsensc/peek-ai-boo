@@ -16,8 +16,12 @@ final class AppModel {
     private(set) var store = SessionStore()
     var isOpen = false {
         didSet {
-            guard isOpen, !oldValue else { return }
-            store.markAllSeen()
+            if isOpen && !oldValue {
+                store.markAllSeen()
+            }
+            // The panel's size depends on isOpen, so every flip needs a
+            // relayout, not just the one that also marks sessions seen.
+            onChange?()
         }
     }
     var muted: Bool {

@@ -30,6 +30,11 @@ final class NotchPanel: NSPanel {
         let hosting = ClickCatchingHostingView(
             rootView: IslandView(app: app, notchWidth: geometry.notch.width)
         )
+        // Left at its default, NSHostingView nudges the window toward
+        // SwiftUI's own idea of a fitting size the moment content changes
+        // (e.g. the empty-state text), fighting our explicit setFrame calls.
+        hosting.sizingOptions = []
+        hosting.autoresizingMask = [.width, .height]
         hosting.frame = NSRect(origin: .zero, size: frame.size)
         contentView = hosting
 
