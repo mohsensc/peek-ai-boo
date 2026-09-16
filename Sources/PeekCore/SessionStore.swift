@@ -161,7 +161,11 @@ public struct SessionStore: Sendable, Equatable {
         guard var s = sessions[key] else { return [] }
         s.pendingPrompts = max(0, s.pendingPrompts - 1)
         s.permissionNotified = false
-        if s.pendingPrompts == 0 {
+        // A Stop that resolved the last pending prompt already moved this
+        // to done; going back to working would leave the ghost animating
+        // forever. The design doc's state table wins over the plan's plain
+        // "becomes working" wording here.
+        if s.pendingPrompts == 0 && s.baseState != .done {
             s.baseState = .working
         }
         sessions[key] = s

@@ -151,6 +151,19 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
         #expect(s.permissionNotified == false)
     }
 
+    @Test func endPromptAfterStopStaysDone() {
+        // A Stop can resolve the last pending prompt (the design doc's
+        // resolution rule includes Stop), and endPrompt runs after it. The
+        // session should stay done, not bounce back to working.
+        var store = SessionStore()
+        _ = store.apply(ev("SessionStart", ts: 1))
+        _ = store.apply(ev("PreToolUse", ts: 2, tool: "Bash"))
+        _ = store.beginPrompt(key, reason: "needs approval: Bash npm test", ts: 3)
+        _ = store.apply(ev("Stop", ts: 4))
+        _ = store.endPrompt(key, ts: 5)
+        #expect(session(store).state == .done)
+    }
+
     @Test func endPromptNeverGoesBelowZero() {
         var store = SessionStore()
         _ = store.apply(ev("SessionStart", ts: 1))
