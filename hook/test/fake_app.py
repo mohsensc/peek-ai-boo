@@ -22,17 +22,20 @@ def bind_listen(path, backlog=16):
 
 
 def _read_line(conn, timeout):
+    """Reads to the first newline and returns everything before it, decoded.
+    Bytes that arrive but never get a terminating "\n" -- a send cut short
+    by the sender's own budget, EOF partway through a write -- aren't a
+    line. A real line-oriented reader would never hand that to a JSON
+    parser, so neither do we: same as nothing arriving at all."""
     conn.settimeout(timeout)
     buf = b""
     try:
         while b"\n" not in buf:
             chunk = conn.recv(65536)
             if not chunk:
-                break
+                return None
             buf += chunk
     except socket.timeout:
-        pass
-    if not buf:
         return None
     return buf.split(b"\n", 1)[0].decode("utf-8", "surrogateescape")
 
