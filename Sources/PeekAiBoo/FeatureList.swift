@@ -7,7 +7,7 @@ func makeFeatures() -> [any Feature] {
 
     // slot: feat/terminal-jump
 
-    // slot: feat/installer
+    features.append(InstallerFeature())
 
     // slot: feat/usage
 

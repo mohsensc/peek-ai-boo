@@ -40,4 +40,12 @@ if [ -d Resources ]; then
   cp -R Resources/. "$app/Contents/Resources/"
 fi
 
+make -C hook
+mkdir -p "$app/Contents/Helpers"
+cp hook/.build/peekaboo-hook "$app/Contents/Helpers/peekaboo-hook"
+chmod +x "$app/Contents/Helpers/peekaboo-hook"
+# Sign the helper before the app: signing the bundle first and dropping a
+# file in after breaks its seal.
+codesign --force --sign - "$app/Contents/Helpers/peekaboo-hook"
+
 codesign --force --sign - "$app"

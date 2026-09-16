@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test*)",
+      "Bash(git status*)"
+    ],
+    "defaultMode": "auto"
+  },
+  "model": "opus",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/example/.claude/hooks/check-branch-policy.sh",
+            "statusMessage": "Checking branch policy"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__some-devtool__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "tn=$(jq -r '.tool_name'); echo \"$tn about to run\" >/dev/null 2>&1; true",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

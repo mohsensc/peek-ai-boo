@@ -41,7 +41,7 @@ extension UsageReader {
 public enum Clients {
     public static func hookSpecs() -> [HookSpec] {
         var specs: [HookSpec] = []
-        // slot: feat/installer
+        specs.append(ClaudeHooks.spec)
 
         // slot: feat/codex hooks
 
