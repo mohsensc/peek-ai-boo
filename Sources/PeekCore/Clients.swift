@@ -50,7 +50,7 @@ public enum Clients {
 
     public static func usageReader(for client: Client) -> (any UsageReader)? {
         var readers: [Client: any UsageReader] = [:]
-        // slot: feat/usage
+        readers[.claude] = ClaudeUsage()
 
         // slot: feat/codex usage
 
