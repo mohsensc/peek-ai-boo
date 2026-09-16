@@ -43,7 +43,7 @@ public enum Clients {
         var specs: [HookSpec] = []
         specs.append(ClaudeHooks.spec)
 
-        // slot: feat/codex hooks
+        specs.append(CodexHooks.spec)
 
         return specs
     }
@@ -52,7 +52,7 @@ public enum Clients {
         var readers: [Client: any UsageReader] = [:]
         // slot: feat/usage
 
-        // slot: feat/codex usage
+        readers[.codex] = CodexUsage()
 
         return readers[client]
     }
