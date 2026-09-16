@@ -1,38 +1,91 @@
+import CoreGraphics
 import PeekCore
 import SwiftUI
 
-/// Colored placeholder shapes standing in for the pixel-ghost sprites.
-/// feat/ghosts swaps this body for real art; the signature stays so nothing
-/// else in the app has to change.
+/// Pixel ghost sprites decoded from Resources/ghost.json. The sheet and its
+/// rendered frames load once and never again; body just picks a frame.
 struct GhostView: View {
     let client: Client
     let pose: GhostPose
     let phase: Double?
 
-    private var color: Color {
-        switch client {
-        case .claude: return Color(red: 1.0, green: 0.478, blue: 0.4)    // #FF7A66
-        case .codex: return Color(red: 0.373, green: 0.878, blue: 0.690)  // #5FE0B0
+    var body: some View {
+        let key = Store.Key(palette: GhostSheet.palette(for: client), pose: pose, frame: frameIndex)
+        let size = CGFloat(GhostSheet.size)
+        if let image = Store.shared.images[key] {
+            Image(decorative: image, scale: 1)
+                .interpolation(.none)
+                .frame(width: size, height: size)
+        } else {
+            Color.clear.frame(width: size, height: size)
         }
     }
 
-    var body: some View {
-        let t = phase ?? 0
-        let moving = phase != nil
-        RoundedRectangle(cornerRadius: 5)
-            .fill(color)
-            .frame(width: 16, height: 16)
-            .opacity(pose == .done ? 0.4 : 1.0)
-            .scaleEffect(pose == .working && moving ? 1 + 0.08 * sin(t * 6) : 1)
-            .rotationEffect(.degrees(pose == .needs && moving ? 6 * sin(t * 10) : 0))
-            .offset(y: pose == .idle && moving ? CGFloat(sin(t * 2)) : 0)
-            .overlay(alignment: .topTrailing) {
-                if pose == .needs {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 5, height: 5)
-                        .offset(x: 2, y: -2)
+    /// nil phase (not moving) always shows frame 0. Otherwise the pose's own
+    /// fps picks between its 2 baked-in frames, which is also where the idle
+    /// bob and the working/needs/done detail live, so there's nothing else
+    /// to animate here.
+    private var frameIndex: Int {
+        guard let phase else { return 0 }
+        let fps = Store.shared.sheet.fps[pose] ?? 1
+        return Int(phase * fps) % 2
+    }
+
+    /// Loads ghost.json and pre-renders every palette/pose/frame combination
+    /// once, so drawing never allocates.
+    private final class Store: @unchecked Sendable {
+        struct Key: Hashable {
+            let palette: String
+            let pose: GhostPose
+            let frame: Int
+        }
+
+        static let shared = Store()
+
+        let sheet: GhostSheet
+        let images: [Key: CGImage]
+
+        private init() {
+            guard let url = Bundle.main.url(forResource: "ghost", withExtension: "json"),
+                let data = try? Data(contentsOf: url),
+                let sheet = try? GhostSheet.parse(data)
+            else {
+                fatalError("ghost.json missing, build with scripts/build-app.sh")
+            }
+            self.sheet = sheet
+
+            var images: [Key: CGImage] = [:]
+            for (palette, colors) in sheet.palettes {
+                for pose in GhostPose.allCases {
+                    for (frame, cells) in (sheet.frames[pose] ?? []).enumerated() {
+                        if let image = Store.render(cells: cells, colors: colors) {
+                            images[Key(palette: palette, pose: pose, frame: frame)] = image
+                        }
+                    }
                 }
             }
+            self.images = images
+        }
+
+        private static func render(cells: [UInt8?], colors: [GhostSheet.RGBA]) -> CGImage? {
+            let size = GhostSheet.size
+            var pixels = [UInt8](repeating: 0, count: size * size * 4)
+            for (i, cell) in cells.enumerated() {
+                guard let cell, Int(cell) < colors.count else { continue }
+                let color = colors[Int(cell)]
+                let o = i * 4
+                pixels[o] = color.r
+                pixels[o + 1] = color.g
+                pixels[o + 2] = color.b
+                pixels[o + 3] = color.a
+            }
+            guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
+            return CGImage(
+                width: size, height: size,
+                bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: size * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+        }
     }
 }
