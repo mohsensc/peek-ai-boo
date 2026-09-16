@@ -15,6 +15,10 @@ protocol Feature: AnyObject {
     func observe(_ event: Event, app: AppModel)
     /// Rows above the session list while the island is open.
     func topRows(app: AppModel) -> AnyView?
+    /// Vertical points `topRows` will occupy, for sizing the panel's frame.
+    /// SwiftUI's own fitting size fights NotchPanel's explicit setFrame
+    /// calls (see the comment there), so the panel asks instead of measuring.
+    func topRowsHeight(app: AppModel) -> CGFloat
     /// A session row was clicked. Return true if this feature handled it.
     func open(_ session: Session, app: AppModel) -> Bool
     /// Extra items for the island's right-click menu.
@@ -29,6 +33,7 @@ extension Feature {
     func start(app: AppModel) {}
     func observe(_ event: Event, app: AppModel) {}
     func topRows(app: AppModel) -> AnyView? { nil }
+    func topRowsHeight(app: AppModel) -> CGFloat { 0 }
     func open(_ session: Session, app: AppModel) -> Bool { false }
     func menuItems(app: AppModel) -> [NSMenuItem] { [] }
     func settingsSections(app: AppModel) -> AnyView? { nil }

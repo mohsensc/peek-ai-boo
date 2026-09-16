@@ -50,6 +50,20 @@ final class Approvals: Feature {
         )
     }
 
+    /// A plain allow/deny row and a question row aren't the same height as
+    /// each other or as a SessionRow, so the panel can't just count them.
+    /// These are estimates (card chrome plus a line per question), not a
+    /// pixel-exact measurement — good enough to stop rows getting clipped.
+    func topRowsHeight(app: AppModel) -> CGFloat {
+        guard !pending.isEmpty else { return 0 }
+        let rows = pending.reduce(CGFloat(0)) { total, prompt in
+            let chrome: CGFloat = 68   // header + actions row + card padding
+            let body: CGFloat = prompt.questions.map { CGFloat($0.count) * 54 } ?? 44
+            return total + chrome + body
+        }
+        return rows + CGFloat(pending.count - 1) * 6   // VStack spacing between rows
+    }
+
     /// Rows capture only the id. The desk decides whether that prompt can
     /// still be answered, so a click on a row that's about to go is a no-op.
     private func answer(_ id: UUID, _ reply: DecideReply, app: AppModel?) {

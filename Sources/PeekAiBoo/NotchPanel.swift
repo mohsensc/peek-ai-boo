@@ -52,7 +52,8 @@ final class NotchPanel: NSPanel {
     private func relayout() {
         let state: LayoutState
         if app.isOpen {
-            state = .open(app.store.ordered.count)
+            let topRowsHeight = app.features.reduce(CGFloat(0)) { $0 + $1.topRowsHeight(app: app) }
+            state = .open(rows: app.store.ordered.count, topRowsHeight: topRowsHeight)
         } else if app.ping != nil {
             state = .pinging
         } else {
@@ -73,7 +74,10 @@ final class NotchPanel: NSPanel {
     enum LayoutState {
         case idleClosed
         case pinging
-        case open(Int)
+        // topRowsHeight covers whatever features draw above the session
+        // list (pending approvals, etc.) — rows alone undercounts the open
+        // island whenever a feature has something to show there.
+        case open(rows: Int, topRowsHeight: CGFloat)
     }
 
     static func frame(for state: LayoutState, geometry: NotchGeometry) -> NSRect {
@@ -86,9 +90,9 @@ final class NotchPanel: NSPanel {
         case .pinging:
             width = max(geometry.notch.width + 260, 300)
             height = 36
-        case .open(let rows):
+        case .open(let rows, let topRowsHeight):
             width = max(geometry.notch.width + 260, 320)
-            height = 48 + CGFloat(max(rows, 1)) * 30
+            height = 48 + CGFloat(max(rows, 1)) * 30 + topRowsHeight
         }
         return NSRect(
             x: geometry.notch.midX - width / 2,
