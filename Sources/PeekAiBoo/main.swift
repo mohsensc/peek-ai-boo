@@ -20,6 +20,14 @@ if LineServer.isListening(paths.events) {
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
+// The panel is an NSPanel that's never key or main, so AppKit's automatic
+// termination heuristic sees "no windows" and marks this LSUIElement app
+// eligible to be killed by the system once it's been idle a few minutes
+// (confirmed via `log show`: _kLSApplicationWouldBeTerminatedByTALKey flips
+// to 1 with no crash log or console output, matching the self-exit report).
+// This is a background watcher, not a document app, so it never wants that.
+ProcessInfo.processInfo.disableAutomaticTermination("watches for agent events in the background")
+
 let model = AppModel(
     paths: paths,
     home: ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory()
