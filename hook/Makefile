@@ -2,8 +2,8 @@ CXX = clang++
 CXXFLAGS = -std=c++20 -O2 -Wall -Wextra -Werror
 
 BUILD = .build
-SRC = src/main.cpp
-LIB_SRC =
+LIB_SRC = src/scan.cpp src/envelope.cpp src/term.cpp src/sock.cpp src/decide.cpp
+SRC = src/main.cpp $(LIB_SRC)
 
 .PHONY: all test clean
 
