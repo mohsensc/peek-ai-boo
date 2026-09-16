@@ -101,6 +101,11 @@ chirps unless muted, and pings. Unseen, those two animate. Seen, they hold a
 still frame and needsYou keeps its badge. Seen means you opened the island or
 jumped there. The count is all needsYou sessions.
 
+Which chirp plays is configurable: a handful of synthesized 8-bit presets
+per event, picked and muted independently, plus one master volume, all set
+from a small settings window off the right-click menu. Still no sound
+files, same in-memory synthesis as everything else here.
+
 A row has project (last part of `cwd`), agent, state, tool, elapsed and
 tokens. Tool is `tool` plus a `tool_input` summary (command, path, URL,
 pattern), set on PreToolUse, cleared on PostToolUse. Elapsed is from the last
