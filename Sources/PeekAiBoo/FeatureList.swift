@@ -5,7 +5,7 @@ func makeFeatures() -> [any Feature] {
     var features: [any Feature] = []
     features.append(Approvals())
 
-    // slot: feat/terminal-jump
+    features.append(TerminalJump())
 
     features.append(InstallerFeature())
 
