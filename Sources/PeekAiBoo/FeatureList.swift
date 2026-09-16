@@ -3,7 +3,7 @@
 @MainActor
 func makeFeatures() -> [any Feature] {
     var features: [any Feature] = []
-    // slot: feat/approvals
+    features.append(Approvals())
 
     // slot: feat/terminal-jump
 
