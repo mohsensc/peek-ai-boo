@@ -19,6 +19,8 @@ protocol Feature: AnyObject {
     func open(_ session: Session, app: AppModel) -> Bool
     /// Extra items for the island's right-click menu.
     func menuItems(app: AppModel) -> [NSMenuItem]
+    /// A section to add to the settings window, if this feature has one.
+    func settingsSections(app: AppModel) -> AnyView?
 }
 
 @MainActor
@@ -29,4 +31,5 @@ extension Feature {
     func topRows(app: AppModel) -> AnyView? { nil }
     func open(_ session: Session, app: AppModel) -> Bool { false }
     func menuItems(app: AppModel) -> [NSMenuItem] { [] }
+    func settingsSections(app: AppModel) -> AnyView? { nil }
 }

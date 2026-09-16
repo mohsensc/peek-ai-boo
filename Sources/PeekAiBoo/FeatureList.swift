@@ -11,7 +11,7 @@ func makeFeatures() -> [any Feature] {
 
     // slot: feat/usage
 
-    // slot: feat/sounds
+    features.append(Sounds())
 
     return features
 }
