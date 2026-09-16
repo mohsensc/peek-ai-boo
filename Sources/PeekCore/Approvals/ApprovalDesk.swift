@@ -19,8 +19,8 @@ public final class ApprovalDesk {
     private var server: LineServer?
 
     /// `ingest` sees every Claude PermissionRequest first, so its session
-    /// exists by the time `opened` runs. `changed` runs whenever
-    /// `book.pending` changed without the caller doing it, or with.
+    /// exists by the time `opened` runs. `changed` runs after any change to
+    /// `book.pending`, including a hook exiting on its own.
     public init(
         path: String,
         ingest: @escaping (Event) -> Void,
