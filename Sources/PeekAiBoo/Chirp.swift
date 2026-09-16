@@ -10,16 +10,8 @@ enum Chirp {
 
     static func play(for state: SessionState) {
         let settings = SoundSettings.load()
-        switch state {
-        case .needsYou:
-            guard !settings.needsYouMuted else { return }
-            play(settings.needsYouPreset, volume: settings.volume)
-        case .done:
-            guard !settings.doneMuted else { return }
-            play(settings.donePreset, volume: settings.volume)
-        default:
-            return
-        }
+        guard let preset = settings.preset(for: state) else { return }
+        play(preset, volume: settings.volume)
     }
 
     /// What the settings window's preview buttons call directly, bypassing

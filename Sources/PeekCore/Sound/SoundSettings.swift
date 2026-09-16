@@ -60,4 +60,15 @@ public struct SoundSettings: Sendable, Equatable {
         defaults.set(doneMuted, forKey: Key.doneMuted)
         defaults.set(volume, forKey: Key.volume)
     }
+
+    /// The preset to play for a state, or nil when that event is muted or
+    /// the state doesn't chirp at all. Keeps the mute decision testable
+    /// without going anywhere near AVAudioPlayer.
+    public func preset(for state: SessionState) -> ChirpPreset? {
+        switch state {
+        case .needsYou: return needsYouMuted ? nil : needsYouPreset
+        case .done: return doneMuted ? nil : donePreset
+        case .idle, .working: return nil
+        }
+    }
 }

@@ -67,4 +67,27 @@ import Testing
         #expect(settings.needsYouMuted == false)
         #expect(settings.doneMuted == false)
     }
+
+    @Test func mutedEventPicksNoPreset() {
+        var settings = SoundSettings()
+        settings.needsYouMuted = true
+        // nil here is what "mute means no playback call" boils down to:
+        // Chirp.play(for:) never reaches AVAudioPlayer without a preset.
+        #expect(settings.preset(for: .needsYou) == nil)
+        #expect(settings.preset(for: .done) == settings.donePreset)
+    }
+
+    @Test func unmutedEventPicksItsConfiguredPreset() {
+        var settings = SoundSettings()
+        settings.needsYouPreset = .ghost
+        settings.donePreset = .arp
+        #expect(settings.preset(for: .needsYou) == .ghost)
+        #expect(settings.preset(for: .done) == .arp)
+    }
+
+    @Test func idleAndWorkingNeverChirp() {
+        let settings = SoundSettings()
+        #expect(settings.preset(for: .idle) == nil)
+        #expect(settings.preset(for: .working) == nil)
+    }
 }
