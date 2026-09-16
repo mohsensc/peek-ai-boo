@@ -101,18 +101,13 @@ public struct Installer {
 
         var root: [String: Any] = [:]
         var mode: Int = 0o644
+        var original: Data?
         if fileExisted {
-            let url = URL(fileURLWithPath: path)
-            let original = try Data(contentsOf: url)
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
             if let perms = try FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? NSNumber {
                 mode = perms.intValue
             }
-
-            let backupPath = path + ".peek-ai-boo.\(Int(now().timeIntervalSince1970)).bak"
-            try original.write(to: URL(fileURLWithPath: backupPath), options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: backupPath)
-
-            guard let parsed = try? JSONSerialization.jsonObject(with: original),
+            guard let parsed = try? JSONSerialization.jsonObject(with: data),
                   let asDict = parsed as? [String: Any] else {
                 throw InstallerError.malformedJSON(path)
             }
@@ -120,11 +115,25 @@ public struct Installer {
                 throw InstallerError.unexpectedHooksShape(path)
             }
             root = asDict
+            original = data
         }
 
         let updated = isInstall
             ? HookConfig.addOurs(to: root, spec: spec, hookPath: paths.hookBinary)
             : HookConfig.removeOurs(from: root)
+
+        // Nothing would change: uninstalling a file we never touched, say.
+        // Don't back it up or reformat it for no reason.
+        if fileExisted, (updated as NSDictionary).isEqual(to: root) {
+            return nil
+        }
+
+        if fileExisted, let original {
+            let backupPath = path + ".peek-ai-boo.\(Int(now().timeIntervalSince1970)).bak"
+            try original.write(to: URL(fileURLWithPath: backupPath), options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: backupPath)
+        }
+
         let data = try HookConfig.encode(updated)
         try data.write(to: URL(fileURLWithPath: path), options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: path)

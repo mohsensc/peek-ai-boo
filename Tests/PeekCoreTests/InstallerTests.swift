@@ -109,6 +109,23 @@ import Testing
         #expect(try jsonEqual(restored, original))
     }
 
+    @Test func uninstallOnAFileWeNeverTouchedIsANoOp() throws {
+        let home = try makeHome()
+        let settingsPath = try writeClaudeSettings(home: home)
+        let original = try Data(contentsOf: URL(fileURLWithPath: settingsPath))
+        let paths = Paths(dir: home + "/.peek-ai-boo")
+        let installer = Installer(
+            home: home, paths: paths, hookSource: try makeHookSource(), specs: [ClaudeHooks.spec])
+
+        let lines = try installer.uninstall()
+        #expect(lines.isEmpty)
+        let after = try Data(contentsOf: URL(fileURLWithPath: settingsPath))
+        #expect(after == original)  // byte-for-byte: not even reformatted
+        let backups = try FileManager.default.contentsOfDirectory(atPath: home + "/.claude")
+            .filter { $0.hasSuffix(".bak") }
+        #expect(backups.isEmpty)
+    }
+
     @Test func missingParentDirIsSkippedEntirely() throws {
         let home = try makeHome()
         _ = try writeClaudeSettings(home: home)
