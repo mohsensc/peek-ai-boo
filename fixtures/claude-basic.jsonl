@@ -1,0 +1,9 @@
+{"v":1,"client":"claude","event":"SessionStart","agent":"sess-1","cwd":"/Users/m/src/sync","ts":1000,"term":{"pid":1234,"tty":"/dev/ttys004","program":"ghostty"}}
+{"v":1,"client":"claude","event":"UserPromptSubmit","agent":"sess-1","cwd":"/Users/m/src/sync","ts":2000,"term":{"pid":1234}}
+{"v":1,"client":"claude","event":"PreToolUse","agent":"sess-1","cwd":"/Users/m/src/sync","ts":3000,"tool":"Bash","tool_use_id":"toolu_1","hook":{"tool_input":{"command":"npm test"}},"term":{"pid":1234}}
+{"v":1,"client":"claude","event":"PostToolUse","agent":"sess-1","cwd":"/Users/m/src/sync","ts":4000,"tool":"Bash","tool_use_id":"toolu_1","term":{"pid":1234}}
+{"v":1,"client":"claude","event":"Notification","agent":"sess-1","cwd":"/Users/m/src/sync","ts":5000,"hook":{"notification_type":"permission_prompt"},"term":{"pid":1234}}
+{"v":1,"client":"claude","event":"PreToolUse","agent":"sess-1","cwd":"/Users/m/src/sync","ts":6000,"tool":"Read","tool_use_id":"toolu_2","hook":{"tool_input":{"file_path":"/Users/m/src/sync/main.go"}},"term":{"pid":1234}}
+{"v":1,"client":"claude","event":"PostToolUse","agent":"sess-1","cwd":"/Users/m/src/sync","ts":7000,"tool":"Read","tool_use_id":"toolu_2","term":{"pid":1234}}
+{"v":1,"client":"claude","event":"Stop","agent":"sess-1","cwd":"/Users/m/src/sync","ts":8000,"term":{"pid":1234}}
+{"v":1,"client":"claude","event":"SessionEnd","agent":"sess-1","ts":9000}
