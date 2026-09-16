@@ -12,4 +12,4 @@ Nothing to run yet.
 
 ## Broken
 
-All of it. Still at the design stage.
+All of it. Still at the design stage, see [docs/design.md](docs/design.md).
