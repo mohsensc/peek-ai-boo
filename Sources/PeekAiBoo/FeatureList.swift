@@ -9,7 +9,7 @@ func makeFeatures() -> [any Feature] {
 
     features.append(InstallerFeature())
 
-    // slot: feat/usage
+    features.append(UsageFeature())
 
     // slot: feat/sounds
 
