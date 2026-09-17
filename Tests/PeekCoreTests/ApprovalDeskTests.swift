@@ -344,6 +344,43 @@ private let fixtureQuestion = fixture("claude-question.jsonl").path
         #expect(obj["message"] == #"User has answered your questions: "Which database should the cache use?"="Redis", "Which environments get it?"="dev, prod". You can now continue with the user's answers in mind."#)
     }
 
+    @Test func typedAnswerSentOnceReachesTheHook() async throws {
+        let rig = try Rig()
+        defer { rig.close() }
+        let hook = try rig.fakeHook(["send", fixtureQuestion])
+        try await waitUntil { rig.pending.count == 1 }
+        let p = rig.pending[0]
+        let qs = try #require(p.questions)
+
+        let message = Question.answerMessage(qs, answers: [[], []], typed: [0: "something else"])
+        #expect(rig.desk.answer(p.id, .deny(message: message)) == p)
+        let reply = try await hook.output()
+        let obj = try #require(JSONSerialization.jsonObject(with: Data(reply.utf8)) as? [String: String])
+        #expect(obj["message"]?.contains(#""something else""#) == true)
+
+        // Second send, or a click racing the first: nothing more goes out.
+        #expect(rig.desk.answer(p.id, .deny(message: message)) == nil)
+        #expect(rig.desk.answer(p.id, .allow) == nil)
+    }
+
+    @Test func typedAnswerNeverSentAfterTheTerminalAnswers() async throws {
+        let rig = try Rig()
+        defer { rig.close() }
+        let hook = try rig.fakeHook(["send", fixtureQuestion])
+        try await waitUntil { rig.pending.count == 1 }
+        let p = rig.pending[0]
+
+        // The terminal answered first: Stop resolves the prompt before the
+        // notch's Send got clicked.
+        rig.feed(stop("sess-question"))
+        #expect(rig.pending.isEmpty)
+        #expect(try await hook.output() == "<EOF, no reply>\n")
+
+        let qs = try #require(p.questions)
+        let message = Question.answerMessage(qs, answers: [[], []], typed: [0: "too late"])
+        #expect(rig.desk.answer(p.id, .deny(message: message)) == nil)
+    }
+
     // MARK: the real hook
 
     @Test func realHookGetsAllow() async throws {
