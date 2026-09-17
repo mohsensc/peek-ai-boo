@@ -40,6 +40,7 @@ struct ApprovalRow: View {
             actions
         }
         .padding(10)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .glassSurface(cornerRadius: 22, concentric: true)
     }
 
@@ -115,7 +116,9 @@ struct ApprovalRow: View {
 
     private func otherPill(_ i: Int) -> some View {
         let field = other(i)
-        return GlassButton(prominent: field.committed, action: {
+        // Green from the click through typing until sent, not just once
+        // committed -- see docs/design.md.
+        return GlassButton(prominent: field.isOpen || field.committed, action: {
             if field.isOpen {
                 cancelOther(i)
             } else if field.committed {

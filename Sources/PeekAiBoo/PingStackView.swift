@@ -307,6 +307,7 @@ struct ApprovalPingCapsule: View {
             PingDetailLine(text: detail, monospaced: true)
         }
         .frame(height: PingStackLayout.collapsedHeight)
+        .clipShape(RoundedRectangle(cornerRadius: PingStackLayout.collapsedCornerRadius, style: .continuous))
         .glassSurface(cornerRadius: PingStackLayout.collapsedCornerRadius, concentric: true)
     }
 
@@ -362,6 +363,7 @@ struct QuestionPingCapsule: View {
             }
         }
         .frame(height: PingRowMetrics.collapsedHeight(for: entry, app: app))
+        .clipShape(RoundedRectangle(cornerRadius: PingStackLayout.collapsedCornerRadius, style: .continuous))
         .glassSurface(cornerRadius: PingStackLayout.collapsedCornerRadius, concentric: true)
     }
 
@@ -510,6 +512,9 @@ struct PingCardView: View {
             footer
         }
         .frame(width: PingStackPanel.width)
+        // The glass background doesn't clip its own content -- without this
+        // a scrolled question could paint past the card's rounded corners.
+        .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
         .glassSurface(cornerRadius: Self.cornerRadius, concentric: true)
         .onAppear {
             // --preselect-multi: screenshot scripts can't click a card's own
@@ -704,7 +709,7 @@ struct InfoPingCapsule: View {
         }
         .padding(.horizontal, 12)
         .frame(height: PingStackLayout.doneHeight)
-        .contentShape(Rectangle())
+        .contentShape(Capsule())
         .onTapGesture { PingActions.jump(entry.key, app) }
         .glassCapsule()
     }
