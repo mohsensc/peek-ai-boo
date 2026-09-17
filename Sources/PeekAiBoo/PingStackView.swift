@@ -46,12 +46,30 @@ enum PingRowMetrics {
     ) -> CGFloat {
         let openFields = app.approvals?.others[prompt.id]?.values.filter(\.isOpen).count ?? 0
         let footer = cardFooterChrome
-            + CGFloat(questions.count) * (optionsRowHeight + 8)
+            + questions.reduce(CGFloat(0)) { $0 + optionsRowsHeight(for: $1) }
             + CGFloat(openFields) * 30
         let content = contentHeight(for: questions)
         return PingCardHeight.layout(
             header: cardHeaderHeight, footer: footer, contentHeight: content, screenHeight: screenHeight
         ).total
+    }
+
+    /// One question's pill row(s) in the card footer. `ViewThatFits` draws
+    /// the options (plus Other) on one line when they fit the card's width,
+    /// else falls back to stacking them — a 4-option-plus-Other question
+    /// wraps to 5 tall pills, not one `optionsRowHeight` line, and the old
+    /// flat estimate here clipped the card's own footer once questions with
+    /// more than a couple of options started reaching the card instead of
+    /// answering inline. Same rough chars-per-line spirit as contentHeight:
+    /// not real measurement, just enough to stop it clipping.
+    private static func optionsRowsHeight(for question: Question) -> CGFloat {
+        let labels = question.options.map(\.label.count) + [5]   // + "Other"
+        let chars = labels.reduce(0, +) + labels.count * 4   // rough per-pill padding
+        guard chars > 40 else { return optionsRowHeight + 8 }
+        let perPill: CGFloat = 34
+        let spacing: CGFloat = 4
+        let count = CGFloat(labels.count)
+        return count * perPill + max(0, count - 1) * spacing + 8
     }
 
     /// A rough chars-per-line estimate at the card's fixed width, same
@@ -179,13 +197,13 @@ private struct PingRowOne<Trailing: View>: View {
     @ViewBuilder let trailing: () -> Trailing
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             Text(project)
                 .font(.system(size: 13, weight: .semibold))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 Text("· \(kind)")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -209,7 +227,6 @@ private struct PingRowOneOptionButton: View {
         if #available(macOS 26, *) {
             Button(action: action) { Text(label).font(.system(size: 11, weight: .medium)) }
                 .buttonStyle(.glass)
-                .controlSize(.mini)
         } else {
             Button(action: action) {
                 Text(label)
@@ -351,14 +368,17 @@ struct QuestionPingCapsule: View {
     @ViewBuilder
     private var row1: some View {
         if let question = inlineQuestion {
+            // Smaller icon buttons than the approval row (16 vs 18): this
+            // row already has two more clickable things (both options) to
+            // fit next to the terminal button and ✎.
             PingRowOne(project: project, kind: "asks") {
-                GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 18) {
+                GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 16) {
                     PingActions.jump(entry.key, app)
                 }
                 ForEach(Array(question.options.enumerated()), id: \.offset) { i, option in
                     PingRowOneOptionButton(label: option.label) { answer(question, i) }
                 }
-                GlassIconButton(systemName: "pencil", tinted: otherActive, help: "Other", size: 18) {
+                GlassIconButton(systemName: "pencil", tinted: otherActive, help: "Other", size: 16) {
                     toggleOther()
                 }
             }
