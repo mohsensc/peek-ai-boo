@@ -38,7 +38,10 @@ TimelineView animates the ghosts, at whatever rate the fastest currently-
 moving pose actually needs (up to 4fps for needsYou) rather than a flat
 10fps for all of them — the flat rate was the real cost of a session sitting
 in `working` or `idle`, worth over 1% CPU for nothing. Paused entirely when
-nothing's moving.
+nothing's moving. needsYou itself only counts as moving for a short wave
+(`Session.needsYouWaveMs`, 5s) from whatever ping caused it — see Sessions —
+so an approval nobody's answered yet settles back to ~0% CPU instead of
+waving at 4fps indefinitely.
 
 ## Protocol
 
@@ -109,16 +112,25 @@ their next one.
 |---|---|---|
 | idle | floats, still after 20s | SessionStart |
 | working | types | UserPromptSubmit, Pre/PostToolUse(Failure), PermissionDenied, SubagentStart/Stop, prompt resolved |
-| needsYou | waves, badge | pending prompt, Notification `permission_prompt` |
+| needsYou | waves for 5s then holds, badge | pending prompt, Notification `permission_prompt` |
 | done | sleeps | Stop, Codex Interrupt |
 | gone | removed | SessionEnd, `term.pid` exit (DispatchSource) |
 
 `permission_prompt` lands ~6s into an unanswered prompt with no tool, so it
 only backs the badge. Entering needsYou or done marks the session unseen and
-chirps unless muted. Unseen, those two animate. Seen, they hold a still frame
-and needsYou keeps its badge. Seen means you opened the island, jumped there,
-or (done only) clicked its info ping — see Pings. The count is all needsYou
-sessions.
+chirps unless muted. Unseen, done animates for as long as it stays unseen —
+same as before. needsYou is shorter-lived: it plays its wave for
+`Session.needsYouWaveMs` (5s) from whatever ping caused it
+(`needsYouWaveStart`), then holds the needs-you pose on frame 0 even though
+still unseen — no timer keeps running to get there, `isMoving` is just a
+pure function of elapsed time, and `AppModel.scheduleStillCheck` arms one
+`asyncAfter` for the moment it flips so the pill's TimelineView can pause
+instead of polling. A new pending prompt on an already-waiting session (a
+second ping stacking on the first) restarts the wave, even when the
+session's own state doesn't change. Seen, both needsYou and done hold a
+still frame regardless of the wave, and needsYou keeps its badge either way.
+Seen means you opened the island, jumped there, or (done only) clicked its
+info ping — see Pings. The count is all needsYou sessions.
 
 Which chirp plays is configurable: a handful of synthesized 8-bit presets
 per event, picked and muted independently, plus one master volume, all set
@@ -139,10 +151,15 @@ event, no watcher or timer:
 
 ## Pings
 
-A ping is a small Liquid Glass capsule that springs down below the pill —
-never the pill itself. Up to 3 stack vertically, oldest (longest-blocked)
-first; a 4th collapses the rest into one "+N more" capsule that opens the
-full panel instead. Persistence depends on kind:
+A ping is a small Liquid Glass row that springs down below the pill — never
+the pill itself. Collapsed, it's two thin lines in a rounded rect with
+concentric corners, not a one-line capsule: tight line spacing, minimal
+vertical padding (the exact numbers live in `PingStackLayout`, shared with
+AppKit's own sizing and hit-testing so a click and a pixel never disagree).
+Up to 3 stack vertically, oldest (longest-blocked) first; a 4th collapses
+the rest into one "+N more" capsule — that one's still a single line and a
+true capsule, since it has no session or request to give a second line to.
+Persistence depends on kind:
 
 - **Approval/question** (one per pending prompt — see Approvals and
   questions): stays until that prompt resolves, by any of the same paths a
@@ -154,21 +171,30 @@ full panel instead. Persistence depends on kind:
 Every capsule and card carries a terminal button (TerminalJump, same as a
 session row) and the session's ghost, static — the pill already animates
 that session, so a second animated copy here would undo the point of
-keeping this cheap.
+keeping this cheap. The ghost sits in its own leading column, vertically
+centered against both collapsed lines.
 
-An approval capsule is one row: ghost, project, the command (or hookGone's
-"answer in terminal"), then terminal / deny (✗) / allow (✓, accent glass).
-Answering goes through the exact same Approvals.answer / ApprovalDesk.answer
+A collapsed row is two lines beside that ghost. Row 1: session name
+(semibold), then a short kind word ("needs approval", "asks", "done"), then
+whatever buttons that kind gets — small circular glass buttons with SF
+Symbols, sized to row 1 rather than the panel's usual 24pt, since a
+question ping only needs the terminal button and an approval needs terminal
+plus deny (✗) and allow (✓, accent glass); hookGone shows "answer in
+terminal" text instead of deny/allow. Row 2: the request or message alone
+(the command, the question, or the info ping's note), full width,
+middle-truncated only if it still doesn't fit — so a long shell command or
+filename keeps both ends visible instead of just its start. Answering an
+approval goes through the exact same Approvals.answer / ApprovalDesk.answer
 path a panel row's buttons use, so "answered once, never after resolution"
 is one guarantee, not two.
 
-A question capsule shows the project and the question one-line. If there's
-exactly one question and its options are few and short enough
-(`Question.fitsInline`: ≤4 options, ≤28 combined characters), they're drawn
-inline as small capsules a click answers directly. Otherwise, or on tapping
-the capsule body, it morphs into a card: header (ghost, project, collapse,
-terminal) on top, the question(s) and their context scrolling in the
-middle, answers — including Other and its text field — pinned at the
+A question ping's row 2 is the question itself. If there's exactly one
+question and its options are few and short enough (`Question.fitsInline`:
+≤4 options, ≤28 combined characters), they're drawn inline as small
+capsules below the two lines, a click answers directly. Otherwise, or on
+tapping the row body, it morphs into a card: header (ghost, project,
+collapse, terminal) on top, the question(s) and their context scrolling in
+the middle, answers — including Other and its text field — pinned at the
 bottom so they never scroll out of reach. The card's height is capped at a
 fraction of the screen's visible height (`PingCardHeight`); only the
 context area scrolls, the header and footer never shrink.
