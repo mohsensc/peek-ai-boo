@@ -21,6 +21,10 @@ protocol Feature: AnyObject {
     func topRowsHeight(app: AppModel) -> CGFloat
     /// A session row was clicked. Return true if this feature handled it.
     func open(_ session: Session, app: AppModel) -> Bool
+    /// The island just closed (click elsewhere, or a toggle). topRows won't
+    /// be drawn again until it reopens, so this is where a feature drops
+    /// any per-row state it was holding on the view's behalf.
+    func closed(app: AppModel)
     /// Extra items for the island's right-click menu.
     func menuItems(app: AppModel) -> [NSMenuItem]
     /// A section to add to the settings window, if this feature has one.
@@ -35,6 +39,7 @@ extension Feature {
     func topRows(app: AppModel) -> AnyView? { nil }
     func topRowsHeight(app: AppModel) -> CGFloat { 0 }
     func open(_ session: Session, app: AppModel) -> Bool { false }
+    func closed(app: AppModel) {}
     func menuItems(app: AppModel) -> [NSMenuItem] { [] }
     func settingsSections(app: AppModel) -> AnyView? { nil }
 }

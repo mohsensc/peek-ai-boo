@@ -19,6 +19,13 @@ final class AppModel {
             if isOpen && !oldValue {
                 store.markAllSeen()
             }
+            if !isOpen && oldValue {
+                // topRows won't be drawn again until it reopens, so this is
+                // the only chance a feature gets to drop row state it was
+                // holding (an open Other field, say) instead of it going
+                // stale — see Feature.closed.
+                for feature in features { feature.closed(app: self) }
+            }
             // The panel's size depends on isOpen, so every flip needs a
             // relayout, not just the one that also marks sessions seen.
             onChange?()

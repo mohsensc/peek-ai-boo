@@ -122,6 +122,18 @@ final class Approvals: Feature {
         return released
     }
 
+    /// The island closed. ApprovalRow gets torn down and rebuilt fresh on
+    /// reopen (its @State picks go with it the same way), so any Other
+    /// field left open here would otherwise hold its editing credit and
+    /// its `others` entry forever — the panel would stay keyable at the
+    /// closed 36pt strip, and reopening would show a field the credit
+    /// doesn't back anymore.
+    func closed(app: AppModel) {
+        for id in Array(others.keys) {
+            releaseOthers(id, app: app)
+        }
+    }
+
     private static func reason(for prompt: PendingPrompt) -> String {
         if let header = prompt.questions?.first?.header {
             return "has a question: \(header)"
