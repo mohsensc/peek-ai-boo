@@ -610,8 +610,14 @@ struct PingCardView: View {
             ))
             .textFieldStyle(.plain)
             .font(.system(size: 13))
+            .lineLimit(1)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
+            // A plain TextField wants to be as wide as its content, which
+            // is what let a long answer grow the field (and the card)
+            // instead of just scrolling — pinning it to the row's width is
+            // what makes the overflow scroll horizontally in place.
+            .frame(maxWidth: .infinity)
             .glassCapsule()
             .focused($focusedOther, equals: i)
             .onSubmit { commitOther(i, q) }
@@ -626,6 +632,7 @@ struct PingCardView: View {
             .buttonStyle(.plain)
             .disabled(!canSubmitOther(i))
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var bindings: PingBindings {
@@ -648,6 +655,10 @@ struct PingCardView: View {
             picked.insert(j)
         }
         picks[i] = picked
+        // Single-select answers on the pick itself -- there's no Send row
+        // left to click. multiSelect still waits for its own Send capsule,
+        // since a toggle isn't a commitment the way a radio pick is.
+        if !multi && ready { send() }
     }
 
     private func commitOther(_ i: Int, _ q: Question) {
