@@ -36,24 +36,19 @@ extension UsageReader {
     public func transcriptPath(for event: Event, home: String) -> String? { event.transcript }
 }
 
-/// Per-client pieces that different PRs provide.
-/// Blank lines between entries keep parallel PRs from conflicting.
+/// Per-client pieces, one entry per supported agent.
 public enum Clients {
     public static func hookSpecs() -> [HookSpec] {
         var specs: [HookSpec] = []
         specs.append(ClaudeHooks.spec)
-
         specs.append(CodexHooks.spec)
-
         return specs
     }
 
     public static func usageReader(for client: Client) -> (any UsageReader)? {
         var readers: [Client: any UsageReader] = [:]
         readers[.claude] = ClaudeUsage()
-
         readers[.codex] = CodexUsage()
-
         return readers[client]
     }
 }

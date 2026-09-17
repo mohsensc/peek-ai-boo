@@ -163,8 +163,7 @@ public struct SessionStore: Sendable, Equatable {
         s.permissionNotified = false
         // A Stop that resolved the last pending prompt already moved this
         // to done; going back to working would leave the ghost animating
-        // forever. The design doc's state table wins over the plan's plain
-        // "becomes working" wording here.
+        // forever, so done wins here.
         if s.pendingPrompts == 0 && s.baseState != .done {
             s.baseState = .working
         }
