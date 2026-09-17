@@ -153,7 +153,18 @@ private func post(_ agent: String, tool: String, input: JSONValue, ts: Int64) ->
 private let fixtureApproval = fixture("claude-approval.jsonl").path
 private let fixtureQuestion = fixture("claude-question.jsonl").path
 
-@Suite @MainActor struct ApprovalDeskTests {
+// Serialized: every test here spawns 1-3 real OS processes connecting to a
+// unix socket. Run concurrently with the rest of this file (swift-testing's
+// default), the aggregate process/socket churn across ~17 tests occasionally
+// produced an ENOTCONN on one connection's own write under nothing more than
+// this suite's own normal load -- reproduced on a plain, unloaded
+// `swift test` run, not just under synthetic CPU pressure. Isolating any one
+// of the three connections in notOursIsHungUpOn never failed alone or in
+// pairs, only as part of the full concurrent suite, which points at
+// scheduling pressure across tests rather than a bug in any one of them.
+// Serializing doesn't touch what's asserted, just removes the concurrency
+// that triggers it.
+@Suite(.serialized) @MainActor struct ApprovalDeskTests {
     @Test func notchAllowReachesTheHook() async throws {
         let rig = try Rig()
         defer { rig.close() }
