@@ -63,11 +63,7 @@ if CommandLine.arguments.contains("--open-other") {
     model.debugOpenOtherOnQuestion = true
 }
 if CommandLine.arguments.contains("--open-settings") {
-    // .floating, not just makeKeyAndOrderFront: an accessory-policy app
-    // without a real activation doesn't reliably win z-order over whatever
-    // already has focus, which a screenshot script always does.
-    let window = features.compactMap({ $0 as? Sounds }).first?.showSettings(app: model)
-    window?.level = .floating
+    features.compactMap({ $0 as? Sounds }).first?.showSettings(app: model, raised: true)
 }
 
 app.run()

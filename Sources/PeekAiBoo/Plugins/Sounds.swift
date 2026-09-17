@@ -27,16 +27,20 @@ final class Sounds: NSObject, Feature {
     }
 
     /// Same as the menu item, for `--open-settings` — a screenshot script
-    /// has no menu to click. Returns the window so a caller with a reason
-    /// to (a screenshot script fighting z-order with whatever's frontmost)
-    /// can adjust it.
+    /// has no menu to click. `raised` is that path only: an accessory-policy
+    /// app doesn't reliably win z-order over whatever already has focus,
+    /// which a screenshot script always does, so it asks for `.floating`
+    /// instead of the normal level. Owned here (not left for a caller to
+    /// mutate after the fact) so the cached window can't get stuck floating
+    /// once the screenshot flag is gone from a later, menu-driven open.
     @discardableResult
-    func showSettings(app: AppModel) -> NSWindow? {
+    func showSettings(app: AppModel, raised: Bool = false) -> NSWindow? {
         // LSUIElement means we never otherwise come forward.
         NSApp.activate()
         if window == nil {
             window = SettingsWindow.make(app: app)
         }
+        window?.level = raised ? .floating : .normal
         window?.makeKeyAndOrderFront(nil)
         return window
     }
