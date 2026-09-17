@@ -13,10 +13,16 @@ enum GlassCompat {
     /// The one color every confirm/selected state uses: Allow, Send, a
     /// picked option, and Other while it's open or committed. Not
     /// `.accentColor` -- tinted glass rendered as flat gray on this Mac's
-    /// accent setting (confirmed with a pixel sample), so this is
-    /// `NSColor.systemGreen` by name, which still adapts to light/dark on
-    /// its own.
-    static let confirmTint = Color(nsColor: .systemGreen)
+    /// accent setting (confirmed with a pixel sample). Not `NSColor.
+    /// systemGreen` either anymore: that read as too bright/neon against
+    /// the glass (pixel-sampled rgb(104,206,103) at full opacity -- also
+    /// under 2:1 contrast for white text, nowhere near AA). This is a
+    /// deeper, slightly muted green picked by hand -- rgb(42,115,69) sRGB,
+    /// 5.8:1 for white text against the source value, still north of 5:1
+    /// once Display P3 capture lightens it (see docs/design.md) -- fixed
+    /// rather than a dynamic system color, so it no longer adapts to light/
+    /// dark on its own, but it was chosen to read fine against both.
+    static let confirmTint = Color(red: 42.0 / 255, green: 115.0 / 255, blue: 69.0 / 255)
 }
 
 private struct GlassSurface: ViewModifier {
@@ -37,9 +43,15 @@ private struct GlassSurface: ViewModifier {
                 content.glassEffect(glass, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             }
         } else {
+            // Full opacity, not a translucent tint over the material: at
+            // the old 0.85 over a light background this composited to
+            // roughly 4.2-4.3:1 for white text, under the 4.5 AA floor the
+            // color itself was picked to clear. A flat fill also matches
+            // why confirmTint exists in the first place -- skip the
+            // vibrancy math instead of fighting it.
             content.background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(tinted ? AnyShapeStyle(GlassCompat.confirmTint.opacity(0.85)) : AnyShapeStyle(.regularMaterial))
+                    .fill(tinted ? AnyShapeStyle(GlassCompat.confirmTint) : AnyShapeStyle(.regularMaterial))
             )
         }
     }
@@ -54,7 +66,7 @@ private struct GlassCapsuleSurface: ViewModifier {
             content.glassEffect(tinted ? .regular.tint(GlassCompat.confirmTint) : .regular, in: .capsule)
         } else {
             content.background(
-                Capsule().fill(tinted ? AnyShapeStyle(GlassCompat.confirmTint.opacity(0.85)) : AnyShapeStyle(.regularMaterial))
+                Capsule().fill(tinted ? AnyShapeStyle(GlassCompat.confirmTint) : AnyShapeStyle(.regularMaterial))
             )
         }
     }
@@ -69,7 +81,7 @@ private struct GlassCircleSurface: ViewModifier {
             content.glassEffect(tinted ? .regular.tint(GlassCompat.confirmTint) : .regular, in: .circle)
         } else {
             content.background(
-                Circle().fill(tinted ? AnyShapeStyle(GlassCompat.confirmTint.opacity(0.85)) : AnyShapeStyle(.regularMaterial))
+                Circle().fill(tinted ? AnyShapeStyle(GlassCompat.confirmTint) : AnyShapeStyle(.regularMaterial))
             )
         }
     }
