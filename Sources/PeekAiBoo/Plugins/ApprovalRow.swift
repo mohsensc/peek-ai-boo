@@ -7,10 +7,15 @@ import SwiftUI
 struct ApprovalRow: View {
     let prompt: PendingPrompt
     let project: String
+    /// "Other" state lives one level up (Approvals), since the panel's
+    /// height needs to know when a field is open.
+    let other: (Int) -> OtherAnswer
+    let setOther: (Int, OtherAnswer) -> Void
     let answer: (DecideReply) -> Void
 
     /// Picked option indexes, per question index.
     @State private var picks: [Int: Set<Int>] = [:]
+    @FocusState private var focusedOther: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -55,12 +60,11 @@ struct ApprovalRow: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.6))
         } else if let questions = prompt.questions {
-            let ready = questions.indices.allSatisfy { !(picks[$0] ?? []).isEmpty }
             HStack {
                 Spacer()
                 pill("Send", filled: true) { send(questions) }
-                    .disabled(!ready)
-                    .opacity(ready ? 1 : 0.4)
+                    .disabled(!ready(questions))
+                    .opacity(ready(questions) ? 1 : 0.4)
             }
         } else {
             HStack(spacing: 8) {
@@ -69,6 +73,10 @@ struct ApprovalRow: View {
                 pill("Allow", filled: true) { answer(.allow) }
             }
         }
+    }
+
+    private func ready(_ questions: [Question]) -> Bool {
+        questions.indices.allSatisfy { !(picks[$0] ?? []).isEmpty || other($0).committed }
     }
 
     private func questionBlock(_ i: Int, _ question: Question) -> some View {
@@ -86,23 +94,78 @@ struct ApprovalRow: View {
                     HStack(spacing: 6) { options(i, question) }
                     VStack(alignment: .leading, spacing: 4) { options(i, question) }
                 }
+                if other(i).isOpen {
+                    otherField(i, question)
+                }
             }
         }
     }
 
     private func options(_ i: Int, _ question: Question) -> some View {
-        ForEach(Array(question.options.enumerated()), id: \.offset) { j, option in
-            pill(option.label, filled: (picks[i] ?? []).contains(j)) {
-                toggle(question: i, option: j, multi: question.multiSelect)
+        Group {
+            ForEach(Array(question.options.enumerated()), id: \.offset) { j, option in
+                pill(option.label, filled: (picks[i] ?? []).contains(j)) {
+                    toggle(question: i, option: j, multi: question.multiSelect)
+                }
+                .help(option.description)
             }
-            .help(option.description)
+            otherPill(i)
         }
+    }
+
+    private func otherPill(_ i: Int) -> some View {
+        let field = other(i)
+        return pill(field.committed ? field.text : "Other", filled: field.committed) {
+            if field.isOpen {
+                cancelOther(i)
+            } else if field.committed {
+                setOther(i, OtherAnswer())
+            } else {
+                var opened = field
+                opened.open()
+                setOther(i, opened)
+                focusedOther = i
+            }
+        }
+    }
+
+    private func otherField(_ i: Int, _ question: Question) -> some View {
+        HStack(spacing: 6) {
+            TextField("Other", text: Binding(
+                get: { other(i).text },
+                set: { var field = other(i); field.type($0); setOther(i, field) }
+            ))
+            .textFieldStyle(.plain)
+            .font(.system(size: 11))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(Color.white.opacity(0.12)))
+            .focused($focusedOther, equals: i)
+            .onSubmit { commitOther(i, question) }
+            .onExitCommand { cancelOther(i) }
+            .onAppear { focusedOther = i }
+
+            Button(action: { commitOther(i, question) }) {
+                Image(systemName: "arrow.turn.down.left")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(canSubmitOther(i) ? 0.9 : 0.3))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSubmitOther(i))
+        }
+    }
+
+    private func canSubmitOther(_ i: Int) -> Bool {
+        Question.cleanTypedAnswer(other(i).text) != nil
     }
 
     private func toggle(question i: Int, option j: Int, multi: Bool) {
         var picked = picks[i] ?? []
         if !multi {
             picked = [j]
+            // Radio semantics: picking a listed option drops a typed one.
+            if other(i).committed { setOther(i, OtherAnswer()) }
         } else if picked.contains(j) {
             picked.remove(j)
         } else {
@@ -111,13 +174,35 @@ struct ApprovalRow: View {
         picks[i] = picked
     }
 
+    private func commitOther(_ i: Int, _ question: Question) {
+        var field = other(i)
+        guard field.submit() != nil else { return }
+        setOther(i, field)
+        // Radio semantics: a typed answer replaces any picked option.
+        if !question.multiSelect { picks[i] = [] }
+        focusedOther = nil
+        // One question, Enter answers it — no second click needed.
+        if let questions = prompt.questions, ready(questions) { send(questions) }
+    }
+
+    private func cancelOther(_ i: Int) {
+        var field = other(i)
+        field.cancel()
+        setOther(i, field)
+        focusedOther = nil
+    }
+
     private func send(_ questions: [Question]) {
         let answers = questions.enumerated().map { i, question in
             question.options.indices
                 .filter { (picks[i] ?? []).contains($0) }
                 .map { question.options[$0].label }
         }
-        answer(.deny(message: Question.answerMessage(questions, answers: answers)))
+        var typed: [Int: String] = [:]
+        for i in questions.indices where other(i).committed {
+            typed[i] = other(i).text
+        }
+        answer(.deny(message: Question.answerMessage(questions, answers: answers, typed: typed)))
     }
 
     private func pill(_ title: String, filled: Bool, action: @escaping () -> Void) -> some View {
