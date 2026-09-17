@@ -241,26 +241,50 @@ combined — see `PingStackLayout`'s budget above):
   body anywhere else.
 
 Tapping the body of either shape — anywhere on row 1 or row 2 — morphs it
-into the same expanded card: header (ghost, project, collapse, terminal) on
-top, the question(s) and their context scrolling in the middle, answers —
-including Other and its text field — pinned at the bottom so they never
-scroll out of reach. Other's pill turns green the same way as the inline
-✎ (`isOpen || committed`), for the same reason. Multi-select toggles
-options green and answers all of them, typed Other included, through one
-Send button. The card's height is capped at a fraction of the screen's
-visible height (`PingCardHeight`); only the context area scrolls, the
-header and footer never shrink.
+into the same expanded card: header (ghost, project, two small circular
+glass buttons for collapse and terminal — same shape as a ping's own
+terminal/deny/allow, `GlassIconButton` just needs `.buttonBorderShape
+(.circle)` spelled out, since `.glass`'s automatic shape is a fixed corner
+radius and only reads as circular by accident at a small enough size) on
+top, the question(s) and their context scrolling in the middle, answers
+pinned at the bottom so they never scroll out of reach.
+
+Each question's options lay out as a wrapping flow (`FlowLayout`, backed by
+the pure `FlowMath.layout` in PeekCore so the card's height estimate and
+what SwiftUI actually draws can't disagree) — packed left to right, one
+row only when they don't all fit, Other always last. Picking an option on
+a single-select question answers immediately, same as an inline
+two-option ping's direct-answer buttons — there's no Send row to click
+after. A multiSelect question still needs an explicit send (toggling isn't
+a commitment the way a radio pick is), but that's now a small green
+capsule at the end of its own flow, not a row under every question. Other's
+pill turns green the same way as the inline ✎ (`isOpen || committed`), for
+the same reason; its text field is a single line with ↵ beside it, and a
+long typed answer scrolls horizontally inside the field instead of
+wrapping or growing it.
+
+The card hugs its content: the context area's height comes from a real
+text measurement (`NSAttributedString.boundingRect` at the font actually
+drawn), not a chars-per-line guess, and the whole card is still capped at a
+fraction of the screen's visible height (`PingCardHeight`) — only the
+context area scrolls past that cap, the header and footer never shrink.
 
 Reduce Motion drops the spring/morph animations; Reduce Transparency drops
 to the same plain-material fallback every other glass surface here uses
 (`GlassCompat`).
 
-Every "green" above is system green (`NSColor.systemGreen`), not the accent
-color — tinted glass rendered as flat gray under this Mac's accent setting,
-system green doesn't, and it still adapts to light/dark on its own. One
-constant, `GlassCompat.confirmTint`, backs every confirm/selected state:
-Allow, Send, a picked option, Other while open or committed. Everything
-else stays neutral glass.
+Every "green" above shares one constant, `GlassCompat.confirmTint` — Allow,
+Send, a picked option, and Other while open or committed all draw it as a
+plain color fill rather than tinted glass, for the vibrancy-flattens-to-gray
+reason above. It's a fixed, hand-picked deep green now, not `NSColor.
+systemGreen`: system green pixel-sampled at rgb(104,206,103) once drawn
+flat, under 2:1 contrast for white text and nowhere close to AA. The
+replacement is rgb(42,115,69) sRGB — 5.8:1 for white text against that
+source value, still 5.7:1 measured off a real capture once Display P3
+lightens it slightly. Fixed rather than a dynamic system color, so it no
+longer adapts to light/dark on its own, but it was picked to read fine
+against both. Everything else stays neutral glass with primary-colored
+labels, not a faded/disabled look.
 
 ## Approvals and questions
 
