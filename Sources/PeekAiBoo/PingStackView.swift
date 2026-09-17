@@ -10,6 +10,7 @@ enum PingRowMetrics {
     static let optionsRowHeight: CGFloat = 30
     static let cardHeaderHeight: CGFloat = 40
     static let cardFooterChrome: CGFloat = 48   // Send button row + padding
+    static let questionBlockSpacing: CGFloat = 8   // footer VStack's spacing between questions
 
     /// This entry's height right now: its card if it's the one expanded,
     /// else its plain collapsed-capsule height.
@@ -551,16 +552,12 @@ struct PingCardView: View {
         }
     }
 
+    // No standalone Send row: multiSelect gets a Send capsule woven into
+    // its own flow instead — see docs/design.md.
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PingRowMetrics.questionBlockSpacing) {
             ForEach(Array(questions.enumerated()), id: \.offset) { i, q in
                 optionsRow(i, q)
-            }
-            HStack {
-                Spacer()
-                GlassButton(prominent: true, action: send) { Text("Send") }
-                    .disabled(!ready)
-                    .opacity(ready ? 1 : 0.4)
             }
         }
         .padding(12)
@@ -568,9 +565,8 @@ struct PingCardView: View {
 
     private func optionsRow(_ i: Int, _ q: Question) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 6) { options(i, q) }
-                VStack(alignment: .leading, spacing: 4) { options(i, q) }
+            FlowLayout {
+                options(i, q)
             }
             if other(i).isOpen {
                 otherField(i, q)
@@ -581,12 +577,15 @@ struct PingCardView: View {
     private func options(_ i: Int, _ q: Question) -> some View {
         Group {
             ForEach(Array(q.options.enumerated()), id: \.offset) { j, option in
-                GlassButton(prominent: (picks[i] ?? []).contains(j), action: { toggle(i, j, q.multiSelect) }) {
-                    Text(option.label)
+                CardPill(label: option.label, selected: (picks[i] ?? []).contains(j)) {
+                    toggle(i, j, q.multiSelect)
                 }
                 .help(option.description)
             }
             otherPill(i)
+            if q.multiSelect {
+                SendPill(enabled: ready, action: send)
+            }
         }
     }
 
@@ -594,7 +593,10 @@ struct PingCardView: View {
         let field = other(i)
         // Green from the click through typing until sent, not just once
         // committed — see docs/design.md.
-        return GlassButton(prominent: field.isOpen || field.committed, action: {
+        return CardPill(
+            label: field.displayLabel, selected: field.isOpen || field.committed,
+            maxLabelWidth: CardFlowMetrics.otherMaxLabelWidth
+        ) {
             if field.isOpen {
                 cancelOther(i)
             } else if field.committed {
@@ -605,8 +607,6 @@ struct PingCardView: View {
                 setOther(i, opened)
                 focusedOther = i
             }
-        }) {
-            Text(field.committed ? field.text : "Other")
         }
     }
 

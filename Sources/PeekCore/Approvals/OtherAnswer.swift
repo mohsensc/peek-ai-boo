@@ -12,6 +12,11 @@ public struct OtherAnswer: Sendable, Equatable {
 
     public init() {}
 
+    /// What a pill shows for this field: the committed text once there is
+    /// one, else the plain "Other" label. One place for this so the view
+    /// and the card's height estimate can't drift apart on what's drawn.
+    public var displayLabel: String { committed ? text : "Other" }
+
     public mutating func open() {
         guard !committed else { return }
         isOpen = true
