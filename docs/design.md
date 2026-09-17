@@ -16,11 +16,12 @@ CLAUDE.md edits, nothing leaves the Mac.
 - `install.sh`: builds, installs, registers hooks.
 
 Window: borderless nonactivating NSPanel at `.statusBar`, canJoinAllSpaces,
-fullScreenAuxiliary, stationary, ignoresCycle, LSUIElement. It's never key,
-so the NSHostingView subclass handles mouseDown. Notch: `safeAreaInsets.top`
-by the gap between the auxiliary top areas (32x185pt here). Built-in screen
-first, else a pill at top center. One TimelineView runs all ghosts at ~10fps,
-paused when still.
+fullScreenAuxiliary, stationary, ignoresCycle, LSUIElement. It's never key
+except while a question's "Other" field is being edited, so the
+NSHostingView subclass handles mouseDown the rest of the time. Notch:
+`safeAreaInsets.top` by the gap between the auxiliary top areas (32x185pt
+here). Built-in screen first, else a pill at top center. One TimelineView
+runs all ghosts at ~10fps, paused when still.
 
 ## Protocol
 
@@ -145,6 +146,18 @@ Questions, and multiSelect labels inside the quotes, join with `, `.
 ```
 User has answered your questions: "Which color?"="Red". You can now continue with the user's answers in mind.
 ```
+
+Each question also gets an Other pill next to its options. Tap it for a
+one-line field; Enter or the small send arrow commits, Esc cancels back to
+the options. A multiSelect question adds the typed text alongside whatever's
+picked; a single-choice one replaces the pick with it. Typed text is
+flattened to one line, quotes and backslashes get escaped so they can't be
+mistaken for the message's own quoting, length is capped at 200 characters,
+and empty or whitespace-only text is rejected. Answering this way is what
+makes the panel go key: it can otherwise never take keyboard focus, but it
+becomes key for exactly as long as that field is focused, so typing doesn't
+activate the app or pull focus off whatever terminal you were in. It resigns
+key again the moment you submit or cancel.
 
 ## Terminal jump
 
