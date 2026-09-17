@@ -2,10 +2,10 @@
 
 Notch app for watching Claude Code and Codex. Each session is a pixel ghost
 left of the notch (coral Claude, mint Codex) animated by state, with a waiting
-count on the right. Needs-you widens the island ~4s with a line like
-`sync · needs approval: Bash npm test`, and chirps. Click to open approvals and
-sessions, click a session to jump to its terminal. No agent tokens, no
-CLAUDE.md edits, nothing leaves the Mac.
+count on the right. The pill itself never resizes; a session that needs you
+chirps and drops a small glass capsule below the pill instead. Click the pill
+to open the full panel (approvals and sessions), click a session to jump to
+its terminal. No agent tokens, no CLAUDE.md edits, nothing leaves the Mac.
 
 ## Pieces
 
@@ -15,20 +15,30 @@ CLAUDE.md edits, nothing leaves the Mac.
   minimum. Everything else. Carries the hook in `Contents/Helpers/`.
 - `install.sh`: builds, installs, registers hooks.
 
-Two borderless nonactivating NSPanels at `.statusBar`, canJoinAllSpaces,
+Three borderless nonactivating NSPanels at `.statusBar`, canJoinAllSpaces,
 fullScreenAuxiliary, stationary, ignoresCycle, LSUIElement. The pill is
-fused to the notch, pure black, no outline, always up. Opening the island
-orders in a second panel below it: Liquid Glass on macOS 26 (a plain system
-material below that), a small gap under the pill, sized to its own
-content. That means the gap and the space around the panel's rounded
-corners are real desktop with no window over them, so a click there falls
-straight through instead of being swallowed. Neither panel is ever key
-except while the Other field is being edited, so the NSHostingView subclass
-forwards mouseDown by hand the rest of the time — and, on the glass panel,
-narrows hit testing to the rounded rect it actually draws, so its corners
-pass clicks through too. Notch: `safeAreaInsets.top` by the gap between the
-auxiliary top areas (32x185pt here). Built-in screen first, else a pill at
-top center. One TimelineView runs all ghosts at ~10fps, paused when still.
+fused to the notch, pure black, no outline, always up, fixed size. Below it,
+in the same slot, sits either the ping stack (persistent capsules, see
+below) or, once clicked, the full panel: Liquid Glass on macOS 26 (a plain
+system material below that), a small gap under the pill, sized to its own
+content. Only one of the two shows at a time — opening the panel hides the
+ping stack, since the panel already lists every pending prompt itself. That
+means the gap, and the space around whichever one's rounded corners, are
+real desktop with no window over them, so a click there falls straight
+through instead of being swallowed. On the ping stack, several capsules (and
+their gaps) share one window, so hit-testing checks each capsule's own
+rounded rect rather than treating the whole window as one shape — same idea
+as the panel's corner narrowing, just per-row. None of the three panels is
+ever key except while an Other field is being edited (routed to whichever of
+the panel/ping-stack is currently showing question cards), so the
+NSHostingView subclass forwards mouseDown by hand the rest of the time.
+Notch: `safeAreaInsets.top` by the gap between the auxiliary top areas
+(32x185pt here). Built-in screen first, else a pill at top center. One
+TimelineView animates the ghosts, at whatever rate the fastest currently-
+moving pose actually needs (up to 4fps for needsYou) rather than a flat
+10fps for all of them — the flat rate was the real cost of a session sitting
+in `working` or `idle`, worth over 1% CPU for nothing. Paused entirely when
+nothing's moving.
 
 ## Protocol
 
@@ -104,10 +114,11 @@ their next one.
 | gone | removed | SessionEnd, `term.pid` exit (DispatchSource) |
 
 `permission_prompt` lands ~6s into an unanswered prompt with no tool, so it
-only backs the badge. Entering needsYou or done marks the session unseen,
-chirps unless muted, and pings. Unseen, those two animate. Seen, they hold a
-still frame and needsYou keeps its badge. Seen means you opened the island or
-jumped there. The count is all needsYou sessions.
+only backs the badge. Entering needsYou or done marks the session unseen and
+chirps unless muted. Unseen, those two animate. Seen, they hold a still frame
+and needsYou keeps its badge. Seen means you opened the island, jumped there,
+or (done only) clicked its info ping — see Pings. The count is all needsYou
+sessions.
 
 Which chirp plays is configurable: a handful of synthesized 8-bit presets
 per event, picked and muted independently, plus one master volume, all set
@@ -125,6 +136,46 @@ event, no watcher or timer:
   fields.
 - Codex total: `info.total_token_usage.total_tokens` of the latest
   `token_count` event_msg. Context: `info.last_token_usage.input_tokens`.
+
+## Pings
+
+A ping is a small Liquid Glass capsule that springs down below the pill —
+never the pill itself. Up to 3 stack vertically, oldest (longest-blocked)
+first; a 4th collapses the rest into one "+N more" capsule that opens the
+full panel instead. Persistence depends on kind:
+
+- **Approval/question** (one per pending prompt — see Approvals and
+  questions): stays until that prompt resolves, by any of the same paths a
+  panel row resolves by (a click here, a click in the panel, or the
+  terminal). Resolving elsewhere animates the capsule away.
+- **Info** (a done, unseen session): stays until clicked. No timer. A click
+  marks that one session seen and dismisses it, same as `markSeen`.
+
+Every capsule and card carries a terminal button (TerminalJump, same as a
+session row) and the session's ghost, static — the pill already animates
+that session, so a second animated copy here would undo the point of
+keeping this cheap.
+
+An approval capsule is one row: ghost, project, the command (or hookGone's
+"answer in terminal"), then terminal / deny (✗) / allow (✓, accent glass).
+Answering goes through the exact same Approvals.answer / ApprovalDesk.answer
+path a panel row's buttons use, so "answered once, never after resolution"
+is one guarantee, not two.
+
+A question capsule shows the project and the question one-line. If there's
+exactly one question and its options are few and short enough
+(`Question.fitsInline`: ≤4 options, ≤28 combined characters), they're drawn
+inline as small capsules a click answers directly. Otherwise, or on tapping
+the capsule body, it morphs into a card: header (ghost, project, collapse,
+terminal) on top, the question(s) and their context scrolling in the
+middle, answers — including Other and its text field — pinned at the
+bottom so they never scroll out of reach. The card's height is capped at a
+fraction of the screen's visible height (`PingCardHeight`); only the
+context area scrolls, the header and footer never shrink.
+
+Reduce Motion drops the spring/morph animations; Reduce Transparency drops
+to the same plain-material fallback every other glass surface here uses
+(`GlassCompat`).
 
 ## Approvals and questions
 
@@ -206,6 +257,26 @@ hooks stay. Command:
   SessionEnd. Timeout 5, SessionEnd and Interrupt 3 (Codex's max). Codex
   trusts hooks by hash, so run `/hooks` after each change. `notify` stays
   untouched.
+
+## Screenshot flags
+
+For scripts that can't send the island a synthetic click:
+
+- `--open`: starts with the full panel open.
+- `--open-other`: opens the first question's Other field the moment one
+  shows up.
+- `--expand-ping`: morphs the first question ping straight to its card.
+- `--open-settings`: opens Settings, raised to `.floating` since an
+  accessory-policy app doesn't reliably win z-order over whatever already
+  has focus (which a screenshot script always does).
+- `--open-settings-normal`: same, but through the exact path the menu item
+  uses — no raise. For confirming Settings really does sit at the standard
+  window level in normal use, not just reading the source and trusting it.
+- `--print-geometry`: prints the pill/panel/ping-stack/Settings frames (and
+  their window level) to stdout after every relayout, plus a same-process
+  AppKit hitTest check at each ping capsule's center and at the midpoint of
+  every gap between them. A capture script reads the frames to
+  `screencapture -R` just the relevant rect.
 
 ## Not in v1
 
