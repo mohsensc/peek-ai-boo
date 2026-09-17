@@ -55,10 +55,29 @@ import Testing
         let three = two + [PingStackLayout.Item(id: "c", ts: 3)]
         #expect(PingStackLayout.layout(three).totalHeight == h * 3 + g * 2)
 
-        // A 4th tips into overflow: 3 rows plus the "+N more" row, which is
-        // collapsedHeight tall too.
+        // A 4th tips into overflow: 3 rows plus the "+N more" row, which
+        // stays a single line (overflowHeight) rather than paying for the
+        // two-line row height the real capsules need.
         let four = three + [PingStackLayout.Item(id: "d", ts: 4)]
-        #expect(PingStackLayout.layout(four).totalHeight == h * 4 + g * 3)
+        #expect(PingStackLayout.layout(four).totalHeight == h * 3 + g * 3 + PingStackLayout.overflowHeight)
+    }
+
+    @Test func overflowRowUsesItsOwnHeightNotTheCollapsedOne() {
+        let items = (0..<4).map { PingStackLayout.Item(id: "\($0)", ts: Int64($0)) }
+        let result = PingStackLayout.layout(items)
+        #expect(result.rows.last?.id == PingStackLayout.overflowID)
+        #expect(result.rows.last?.height == PingStackLayout.overflowHeight)
+        #expect(PingStackLayout.overflowHeight != PingStackLayout.collapsedHeight)
+    }
+
+    @Test func collapsedRowIsTwoLinesAndNoLongerACapsule() {
+        #expect(PingStackLayout.collapsedHeight ==
+            PingStackLayout.rowOnePadding + PingStackLayout.rowOneHeight
+            + PingStackLayout.rowSpacing + PingStackLayout.rowTwoHeight + PingStackLayout.rowTwoPadding)
+        // A true capsule's corner radius is half its height; this one has to
+        // be smaller, or the "rounded rect with concentric corners" the
+        // design calls for draws as a capsule again.
+        #expect(PingStackLayout.collapsedCornerRadius < PingStackLayout.collapsedHeight / 2)
     }
 
     @Test func rowsStackTopDownWithNoOverlap() {

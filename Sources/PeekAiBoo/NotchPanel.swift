@@ -240,7 +240,19 @@ final class PingStackPanel: NSPanel {
         // VStack SwiftUI draws), but this view keeps AppKit's normal
         // bottom-left bounds, so each row flips against the total height.
         hosting.regions = result.rows.map { row in
-            let radius = row.id == app.expandedPingID ? PingCardView.cornerRadius : row.height / 2
+            // Expanded card: its own concentric radius. "+N more": still a
+            // true capsule, so half its height. Everything else: a
+            // collapsed row is a rounded rect now, not a capsule, so its
+            // hit region has to use the same fixed radius SwiftUI draws it
+            // with — see PingStackLayout.collapsedCornerRadius.
+            let radius: CGFloat
+            if row.id == app.expandedPingID {
+                radius = PingCardView.cornerRadius
+            } else if row.id == PingStackLayout.overflowID {
+                radius = row.height / 2
+            } else {
+                radius = PingStackLayout.collapsedCornerRadius
+            }
             let y = result.totalHeight - row.y - row.height
             return .init(rect: NSRect(x: 0, y: y, width: Self.width, height: row.height), cornerRadius: radius)
         }
@@ -268,6 +280,18 @@ final class PingStackPanel: NSPanel {
             let gapY = (regions[i].rect.minY + regions[i + 1].rect.maxY) / 2
             let hit = hosting.hitTest(NSPoint(x: regions[i].rect.midX, y: gapY)) != nil
             print("HITTEST gap\(i) \(hit ? "HIT (should fall through)" : "miss")")
+        }
+        // A point well inside the rounded corner actually drawn (30% of the
+        // radius in from each edge) has to hit — the corner-narrowing math
+        // only exists to reject the true rectangle's corners, not eat into
+        // the shape itself. Catches a region built with the wrong radius
+        // (e.g. a collapsed row still using capsule math) that the
+        // above/gap probes, aimed at row centers and gaps, wouldn't notice.
+        if let first = regions.first, first.cornerRadius > 0 {
+            let r = first.cornerRadius
+            let inset = NSPoint(x: first.rect.minX + r * 0.3, y: first.rect.maxY - r * 0.3)
+            let hit = hosting.hitTest(inset) != nil
+            print("HITTEST corner-inset \(hit ? "hit" : "MISS (should hit)")")
         }
         if let first = regions.first {
             let above = NSPoint(x: first.rect.midX, y: first.rect.maxY + 20)

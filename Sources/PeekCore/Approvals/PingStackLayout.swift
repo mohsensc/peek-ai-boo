@@ -8,9 +8,29 @@ import CoreGraphics
 public enum PingStackLayout {
     public static let visibleLimit = 3
     public static let gap: CGFloat = 8
-    public static let collapsedHeight: CGFloat = 44
     /// The row `layout` appends when items are hidden behind "+N more".
     public static let overflowID = "__overflow__"
+    /// "+N more" is still just one line of text — no session, no request to
+    /// give room to — so it keeps the old one-line height rather than paying
+    /// for the two-line capsule's row math below.
+    public static let overflowHeight: CGFloat = 32
+    /// Drawn corner radius for a collapsed row (a rounded rect now, not a
+    /// true capsule — see PingRowMetrics/PingStackView). PingStackPanel's
+    /// hit-test regions use this same number so a click near a corner and
+    /// the pixel actually drawn there never disagree.
+    public static let collapsedCornerRadius: CGFloat = 16
+
+    // A collapsed ping is two tight lines: row 1 (ghost-height session name,
+    // kind and buttons) and row 2 (the request/message, full width). Kept
+    // here rather than only in SwiftUI so PeekAiBoo and this module's own
+    // tests read the exact same numbers AppKit sizes the window from.
+    public static let rowOnePadding: CGFloat = 6
+    public static let rowOneHeight: CGFloat = 20
+    public static let rowSpacing: CGFloat = 2
+    public static let rowTwoHeight: CGFloat = 16
+    public static let rowTwoPadding: CGFloat = 6
+    public static let collapsedHeight: CGFloat =
+        rowOnePadding + rowOneHeight + rowSpacing + rowTwoHeight + rowTwoPadding
 
     public struct Item: Equatable {
         public let id: String
@@ -51,8 +71,8 @@ public enum PingStackLayout {
             y += height + gap
         }
         if overflow > 0 {
-            rows.append(Row(id: overflowID, y: y, height: collapsedHeight))
-            y += collapsedHeight + gap
+            rows.append(Row(id: overflowID, y: y, height: overflowHeight))
+            y += overflowHeight + gap
         }
         let total = rows.isEmpty ? 0 : y - gap
         return Result(rows: rows, overflow: overflow, totalHeight: total)

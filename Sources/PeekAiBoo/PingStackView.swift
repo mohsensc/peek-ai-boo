@@ -105,7 +105,7 @@ struct PingStackView: View {
                 }
                 if overflow > 0 {
                     OverflowCapsule(count: overflow) { app.isOpen = true }
-                        .frame(width: PingStackPanel.width, height: PingStackLayout.collapsedHeight)
+                        .frame(width: PingStackPanel.width, height: PingStackLayout.overflowHeight)
                 }
             }
             .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.82), value: shown.map(\.id))
@@ -140,37 +140,101 @@ struct PingStackView: View {
     }
 }
 
-/// A plain permission prompt: project, command, terminal/deny/allow.
-/// Never expands — there's nothing more to show than the one-liner already
-/// on it.
+/// A row's project name plus a short kind word ("needs approval", "asks",
+/// "done") — row 1's leading text, before whatever buttons that kind gets.
+private struct PingKindLabel: View {
+    let project: String
+    let kind: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(project)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
+            Text(kind)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+}
+
+/// Row 2 of a collapsed ping: the request or message, alone, spanning the
+/// full text column. Middle-truncated (not tail) so a long shell command or
+/// question still shows its end, not just where it starts.
+private struct PingDetailLine: View {
+    let text: String
+    var monospaced = false
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, design: monospaced ? .monospaced : .default))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The two-line shell every collapsed ping shares: a leading ghost centered
+/// against both lines, then row 1 and row 2 stacked tight beside it. Kind-
+/// specific content (buttons, detail text) is supplied by the caller; the
+/// geometry itself comes from PingStackLayout so AppKit's window math and
+/// this view never disagree about how tall a row actually is.
+private struct PingRowShell<Row1: View, Row2: View>: View {
+    let client: Client
+    let pose: GhostPose
+    @ViewBuilder let row1: () -> Row1
+    @ViewBuilder let row2: () -> Row2
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            GhostView(client: client, pose: pose, phase: nil)
+            VStack(alignment: .leading, spacing: PingStackLayout.rowSpacing) {
+                row1().frame(height: PingStackLayout.rowOneHeight)
+                row2().frame(height: PingStackLayout.rowTwoHeight)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, PingStackLayout.rowOnePadding)
+        .padding(.bottom, PingStackLayout.rowTwoPadding)
+    }
+}
+
+/// A plain permission prompt: session/kind and buttons on row 1, the command
+/// alone on row 2. Never expands — there's nothing more to show than what's
+/// already on it.
 struct ApprovalPingCapsule: View {
     let entry: PingEntry
     let prompt: PendingPrompt
     let app: AppModel
 
     var body: some View {
-        HStack(spacing: 8) {
-            PingSessionLabel(key: entry.key, app: app)
-            Text(detail)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Spacer(minLength: 4)
-            GlassIconButton(systemName: "apple.terminal", help: "Terminal") {
-                PingActions.jump(entry.key, app)
+        PingRowShell(client: entry.key.client, pose: pose) {
+            HStack(spacing: 6) {
+                PingKindLabel(project: project, kind: "needs approval")
+                Spacer(minLength: 4)
+                GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 20) {
+                    PingActions.jump(entry.key, app)
+                }
+                if prompt.hookGone {
+                    Text("terminal").font(.system(size: 9)).foregroundStyle(.secondary)
+                } else {
+                    GlassIconButton(systemName: "xmark", help: "Deny", size: 20) { bindings.answer(.deny(message: nil)) }
+                    GlassIconButton(systemName: "checkmark", tinted: true, help: "Allow", size: 20) { bindings.answer(.allow) }
+                }
             }
-            if prompt.hookGone {
-                Text("terminal").font(.system(size: 10)).foregroundStyle(.secondary)
-            } else {
-                GlassIconButton(systemName: "xmark", help: "Deny") { bindings.answer(.deny(message: nil)) }
-                GlassIconButton(systemName: "checkmark", tinted: true, help: "Allow") { bindings.answer(.allow) }
-            }
+        } row2: {
+            PingDetailLine(text: detail, monospaced: true)
         }
-        .padding(.horizontal, 12)
         .frame(height: PingStackLayout.collapsedHeight)
-        .glassCapsule()
+        .glassSurface(cornerRadius: PingStackLayout.collapsedCornerRadius, concentric: true)
     }
+
+    private var project: String { app.store.sessions[entry.key]?.project ?? "?" }
+    private var pose: GhostPose { app.store.sessions[entry.key]?.pose ?? .idle }
 
     private var bindings: PingBindings {
         app.approvals?.pingBindings(for: prompt, app: app)
@@ -187,9 +251,10 @@ struct ApprovalPingCapsule: View {
     }
 }
 
-/// A question, collapsed: header row plus (when it fits) the options inline
-/// as small capsules a click answers directly. Tapping the body anywhere
-/// else — or the whole row when it doesn't fit — expands to the card.
+/// A question, collapsed: session/kind and the terminal button on row 1, the
+/// question itself on row 2, then (when it fits) the options inline as small
+/// capsules a click answers directly. Tapping the body anywhere else — or
+/// the whole row when it doesn't fit — expands to the card.
 struct QuestionPingCapsule: View {
     let entry: PingEntry
     let prompt: PendingPrompt
@@ -198,16 +263,16 @@ struct QuestionPingCapsule: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                PingSessionLabel(key: entry.key, app: app)
-                Text(prompt.summary)
-                    .font(.system(size: 12))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 4)
-                GlassIconButton(systemName: "apple.terminal", help: "Terminal") {
-                    PingActions.jump(entry.key, app)
+            PingRowShell(client: entry.key.client, pose: pose) {
+                HStack(spacing: 6) {
+                    PingKindLabel(project: project, kind: "asks")
+                    Spacer(minLength: 4)
+                    GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 20) {
+                        PingActions.jump(entry.key, app)
+                    }
                 }
+            } row2: {
+                PingDetailLine(text: prompt.summary)
             }
             if let question = inlineQuestion {
                 HStack(spacing: 6) {
@@ -219,14 +284,18 @@ struct QuestionPingCapsule: View {
                     }
                     Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 12)
+                .padding(.bottom, PingStackLayout.rowTwoPadding)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .frame(height: PingRowMetrics.collapsedHeight(for: entry))
         .contentShape(Rectangle())
         .onTapGesture(perform: onExpand)
-        .glassCapsule()
+        .glassSurface(cornerRadius: PingStackLayout.collapsedCornerRadius, concentric: true)
     }
+
+    private var project: String { app.store.sessions[entry.key]?.project ?? "?" }
+    private var pose: GhostPose { app.store.sessions[entry.key]?.pose ?? .idle }
 
     private var inlineQuestion: Question? {
         guard PingRowMetrics.showsInlineOptions(prompt) else { return nil }
@@ -437,34 +506,36 @@ struct PingCardView: View {
 
 /// A done session waiting to be acknowledged. Any click (other than the
 /// terminal button) marks it seen and dismisses it — no answer to give,
-/// just a nudge that's been read.
+/// just a nudge that's been read. Row 2 is whatever note a feature left on
+/// the session (TerminalJump, so far), or plain "done" when there isn't one.
 struct InfoPingCapsule: View {
     let entry: PingEntry
     let session: Session
     let app: AppModel
 
     var body: some View {
-        HStack(spacing: 8) {
-            GhostView(client: entry.key.client, pose: session.pose, phase: nil)
-            Text(session.project).font(.system(size: 13, weight: .semibold))
-            Text("done")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 4)
-            GlassIconButton(systemName: "apple.terminal", help: "Terminal") {
-                PingActions.jump(entry.key, app)
+        PingRowShell(client: entry.key.client, pose: session.pose) {
+            HStack(spacing: 6) {
+                PingKindLabel(project: session.project, kind: "done")
+                Spacer(minLength: 4)
+                GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 20) {
+                    PingActions.jump(entry.key, app)
+                }
             }
+        } row2: {
+            PingDetailLine(text: session.note ?? "done")
         }
-        .padding(.horizontal, 12)
         .frame(height: PingStackLayout.collapsedHeight)
         .contentShape(Rectangle())
         .onTapGesture { app.dismissInfoPing(entry.key) }
-        .glassCapsule()
+        .glassSurface(cornerRadius: PingStackLayout.collapsedCornerRadius, concentric: true)
     }
 }
 
 /// Beyond the 3 visible capsules: a click opens the full panel, same as
 /// clicking the pill — that's where the rest of the queue already lives.
+/// Still a single line and a true capsule — no session, no request, nothing
+/// the two-line row's ghost/buttons split would help with.
 struct OverflowCapsule: View {
     let count: Int
     let action: () -> Void
@@ -477,7 +548,7 @@ struct OverflowCapsule: View {
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
             }
-            .frame(height: PingStackLayout.collapsedHeight)
+            .frame(height: PingStackLayout.overflowHeight)
         }
         .buttonStyle(.plain)
         .glassCapsule()

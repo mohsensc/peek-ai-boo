@@ -131,11 +131,14 @@ struct GlassButton<Label: View>: View {
 
 /// The terminal/deny/allow buttons on a ping capsule: one SF Symbol in a
 /// small circular glass button. Same macOS-26-or-fallback split as
-/// GlassButton, just circular and icon-only.
+/// GlassButton, just circular and icon-only. `size` defaults to the panel's
+/// row height (24); the two-line ping row asks for something smaller so the
+/// buttons stay sized to row 1 instead of setting it.
 struct GlassIconButton: View {
     var systemName: String
     var tinted = false
     var help: String?
+    var size: CGFloat = 24
     var action: () -> Void
 
     var body: some View {
@@ -150,7 +153,7 @@ struct GlassIconButton: View {
                 Button(action: action) {
                     icon
                         .foregroundStyle(tinted ? Color.white : Color.primary)
-                        .frame(width: 24, height: 24)
+                        .frame(width: size, height: size)
                         .glassCircle(tinted: tinted)
                 }
                 .buttonStyle(.plain)
@@ -161,7 +164,7 @@ struct GlassIconButton: View {
 
     private var icon: some View {
         Image(systemName: systemName)
-            .font(.system(size: 11, weight: .semibold))
-            .frame(width: 24, height: 24)
+            .font(.system(size: size * 11 / 24, weight: .semibold))
+            .frame(width: size, height: size)
     }
 }
