@@ -2,8 +2,8 @@ import AppKit
 import PeekCore
 import SwiftUI
 
-/// How wave-2 features plug into the app. Every hook has a do-nothing
-/// default, so a feature only writes what it uses.
+/// How features plug into the app. Every hook has a do-nothing default,
+/// so a feature only writes what it uses.
 @MainActor
 protocol Feature: AnyObject {
     /// Before NSApplication starts. Return an exit code to quit instead.

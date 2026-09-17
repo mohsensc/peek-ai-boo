@@ -2,7 +2,7 @@ import AppKit
 import PeekCore
 import SwiftUI
 
-/// Owns the settings window (this wave's only piece that needs one) and
+/// Owns the settings window (the only feature that needs one so far) and
 /// contributes the sound section to it. Chirp.play already reads
 /// SoundSettings on its own, so this feature's job is just the UI to
 /// change them.
