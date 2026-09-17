@@ -132,8 +132,17 @@ private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async
 
 private struct TimedOut: Error {}
 
-private func stop(_ agent: String) -> Event {
-    Event(client: .claude, event: "Stop", agent: agent, ts: nowMs() + 1)
+/// `ts` defaults to "now", which is fine when nothing else in the test
+/// pins down a specific moment. Resolution only requires the book's own
+/// `e.ts > p.ts` (see ApprovalBook.apply), not "now" specifically -- a
+/// caller resolving a known prompt should say so explicitly (`p.ts + 1`)
+/// rather than lean on the wall clock having moved on since. Under heavy
+/// load a fresh `nowMs()` read can land on the exact same millisecond a
+/// fixture's own ts already used (coarse clock ticks under CPU pressure),
+/// which is indistinguishable from "not later" to the book and silently
+/// leaves the prompt open -- this bit typedAnswerNeverSentAfterTheTerminalAnswers.
+private func stop(_ agent: String, ts: Int64 = nowMs() + 1) -> Event {
+    Event(client: .claude, event: "Stop", agent: agent, ts: ts)
 }
 
 private func post(_ agent: String, tool: String, input: JSONValue, ts: Int64) -> Event {
@@ -246,8 +255,9 @@ private let fixtureQuestion = fixture("claude-question.jsonl").path
         #expect(rig.pending.count == 1)
         #expect(rig.ended.isEmpty)
 
-        // Whatever the terminal did next clears it.
-        rig.feed(stop("sess-approval"))
+        // Whatever the terminal did next clears it. ts is relative to the
+        // prompt's own, not the wall clock -- see stop(_:ts:).
+        rig.feed(stop("sess-approval", ts: p.ts + 1))
         #expect(rig.pending.isEmpty)
         #expect(rig.ended.map(\.id) == [p.id])
     }
@@ -377,8 +387,9 @@ private let fixtureQuestion = fixture("claude-question.jsonl").path
         let p = rig.pending[0]
 
         // The terminal answered first: Stop resolves the prompt before the
-        // notch's Send got clicked.
-        rig.feed(stop("sess-question"))
+        // notch's Send got clicked. ts is relative to the prompt's own --
+        // see stop(_:ts:).
+        rig.feed(stop("sess-question", ts: p.ts + 1))
         #expect(rig.pending.isEmpty)
         #expect(try await hook.output() == "<EOF, no reply>\n")
 
