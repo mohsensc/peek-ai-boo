@@ -17,15 +17,23 @@ enum PingRowMetrics {
         guard entry.id == app.expandedPingID,
               case .approval(let prompt) = entry.kind,
               let questions = prompt.questions
-        else { return collapsedHeight(for: entry) }
+        else { return collapsedHeight(for: entry, app: app) }
         return cardHeight(for: prompt, questions: questions, app: app, screenHeight: screenHeight)
     }
 
-    static func collapsedHeight(for entry: PingEntry) -> CGFloat {
-        if case .approval(let prompt) = entry.kind, showsInlineOptions(prompt) {
-            return PingStackLayout.collapsedHeight + optionsRowHeight
-        }
-        return PingStackLayout.collapsedHeight
+    /// A done ping is its own, shorter, one-line shape; everything else is
+    /// the normal two-line capsule, grown by a row when an inline
+    /// two-option question's Other field is open (row 3 — see
+    /// PingStackLayout.collapsedHeight(rowThree:), which is pure and
+    /// carries the actual math).
+    static func collapsedHeight(for entry: PingEntry, app: AppModel) -> CGFloat {
+        if case .info = entry.kind { return PingStackLayout.doneHeight }
+        return PingStackLayout.collapsedHeight(rowThree: showsOpenOtherRow(entry, app: app))
+    }
+
+    private static func showsOpenOtherRow(_ entry: PingEntry, app: AppModel) -> Bool {
+        guard case .approval(let prompt) = entry.kind, showsInlineOptions(prompt) else { return false }
+        return app.approvals?.others[prompt.id]?[0]?.isOpen ?? false
     }
 
     static func showsInlineOptions(_ prompt: PendingPrompt) -> Bool {
@@ -142,6 +150,9 @@ struct PingStackView: View {
 
 /// A row's project name plus a short kind word ("needs approval", "asks",
 /// "done") — row 1's leading text, before whatever buttons that kind gets.
+/// Still used by QuestionPingCapsule/InfoPingCapsule; ApprovalPingCapsule
+/// has moved to PingRowOne below, which fixes the truncation order — see
+/// its doc comment.
 private struct PingKindLabel: View {
     let project: String
     let kind: String
@@ -157,6 +168,65 @@ private struct PingKindLabel: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+        }
+    }
+}
+
+/// Row 1's shell for every ping kind: the session name, then a "· kind
+/// word" plus whatever buttons that kind gets. The name is the one side
+/// that gives up space — no fixedSize, so it truncates — while the kind
+/// cluster is wrapped in fixedSize so it always draws at its own natural
+/// width, however wide the real glass buttons render. That split is the
+/// whole truncation-priority fix: previously the kind word (lower
+/// layoutPriority, no fixedSize) was the one that shrank, so "needs
+/// approval" clipped to "needs appro…" next to a long session name instead
+/// of the name giving way — see docs/design.md.
+private struct PingRowOne<Trailing: View>: View {
+    let project: String
+    let kind: String
+    @ViewBuilder let trailing: () -> Trailing
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(project)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 4) {
+                Text("· \(kind)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                trailing()
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .layoutPriority(1)
+        }
+    }
+}
+
+/// A short-answer button living in row 1 itself (Dark/Light and friends):
+/// same glass material as everywhere else, just sized down — row 1 has to
+/// fit the terminal button and ✎ next to it too.
+private struct PingRowOneOptionButton: View {
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        if #available(macOS 26, *) {
+            Button(action: action) { Text(label).font(.system(size: 11, weight: .medium)) }
+                .buttonStyle(.glass)
+                .controlSize(.mini)
+        } else {
+            Button(action: action) {
+                Text(label)
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.primary.opacity(0.1)))
+            }
+            .buttonStyle(.plain)
         }
     }
 }
@@ -213,9 +283,7 @@ struct ApprovalPingCapsule: View {
 
     var body: some View {
         PingRowShell(client: entry.key.client, pose: pose) {
-            HStack(spacing: 4) {
-                PingKindLabel(project: project, kind: "needs approval")
-                Spacer(minLength: 4)
+            PingRowOne(project: project, kind: "needs approval") {
                 GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 18) {
                     PingActions.jump(entry.key, app)
                 }
@@ -288,7 +356,7 @@ struct QuestionPingCapsule: View {
                 .padding(.bottom, PingStackLayout.rowTwoPadding)
             }
         }
-        .frame(height: PingRowMetrics.collapsedHeight(for: entry))
+        .frame(height: PingRowMetrics.collapsedHeight(for: entry, app: app))
         .contentShape(Rectangle())
         .onTapGesture(perform: onExpand)
         .glassSurface(cornerRadius: PingStackLayout.collapsedCornerRadius, concentric: true)
