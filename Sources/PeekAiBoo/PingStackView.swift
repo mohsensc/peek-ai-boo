@@ -7,10 +7,10 @@ import SwiftUI
 /// see PingStackPanel.relayout.
 @MainActor
 enum PingRowMetrics {
-    static let optionsRowHeight: CGFloat = 30
     static let cardHeaderHeight: CGFloat = 40
-    static let cardFooterChrome: CGFloat = 48   // Send button row + padding
+    static let cardFooterPadding: CGFloat = 24   // the footer VStack's own .padding(12), both edges
     static let questionBlockSpacing: CGFloat = 8   // footer VStack's spacing between questions
+    static let otherFieldRowHeight: CGFloat = 34   // the field itself (30) + the 4pt gap above it
 
     /// This entry's height right now: its card if it's the one expanded,
     /// else its plain collapsed-capsule height.
@@ -45,44 +45,36 @@ enum PingRowMetrics {
     static func cardHeight(
         for prompt: PendingPrompt, questions: [Question], app: AppModel, screenHeight: CGFloat
     ) -> CGFloat {
-        let openFields = app.approvals?.others[prompt.id]?.values.filter(\.isOpen).count ?? 0
-        let footer = cardFooterChrome
-            + questions.reduce(CGFloat(0)) { $0 + optionsRowsHeight(for: $1) }
-            + CGFloat(openFields) * 30
+        let others = app.approvals?.others[prompt.id] ?? [:]
+        let openFields = others.values.filter(\.isOpen).count
+        let footer = cardFooterPadding
+            + questions.indices.reduce(CGFloat(0)) { total, i in
+                let label = (others[i] ?? OtherAnswer()).displayLabel
+                return total + CardFlowMetrics.flowHeight(for: questions[i], otherLabel: label)
+            }
+            + CGFloat(max(0, questions.count - 1)) * questionBlockSpacing
+            + CGFloat(openFields) * otherFieldRowHeight
         let content = contentHeight(for: questions)
         return PingCardHeight.layout(
             header: cardHeaderHeight, footer: footer, contentHeight: content, screenHeight: screenHeight
         ).total
     }
 
-    /// One question's pill row(s) in the card footer. `ViewThatFits` draws
-    /// the options (plus Other) on one line when they fit the card's width,
-    /// else falls back to stacking them — a 4-option-plus-Other question
-    /// wraps to 5 tall pills, not one `optionsRowHeight` line, and the old
-    /// flat estimate here clipped the card's own footer once questions with
-    /// more than a couple of options started reaching the card instead of
-    /// answering inline. Same rough chars-per-line spirit as contentHeight:
-    /// not real measurement, just enough to stop it clipping.
-    private static func optionsRowsHeight(for question: Question) -> CGFloat {
-        let labels = question.options.map(\.label.count) + [5]   // + "Other"
-        let chars = labels.reduce(0, +) + labels.count * 4   // rough per-pill padding
-        guard chars > 40 else { return optionsRowHeight + 8 }
-        let perPill: CGFloat = 34
-        let spacing: CGFloat = 4
-        let count = CGFloat(labels.count)
-        return count * perPill + max(0, count - 1) * spacing + 8
-    }
-
-    /// A rough chars-per-line estimate at the card's fixed width, same
-    /// "good enough" spirit as Approvals.topRowsHeight — real measurement
-    /// isn't worth it when the ScrollView caps the actual drawing anyway.
+    /// A real text measurement (the same font the card actually draws) at
+    /// the card's fixed content width, not a chars-per-line guess — the
+    /// guess is what left a blank gap above the divider on a short question,
+    /// since the ScrollView between two fixed-height siblings soaks up
+    /// whatever the estimate over-reserved instead of just hugging its
+    /// text. `PingCardHeight` still caps the total for a long one.
     private static func contentHeight(for questions: [Question]) -> CGFloat {
-        let charsPerLine: CGFloat = 38
-        let lineHeight: CGFloat = 17
-        return questions.reduce(CGFloat(0)) { total, q in
-            let lines = max(1, (CGFloat(q.question.count) / charsPerLine).rounded(.up))
-            return total + 14 /* header label */ + lines * lineHeight + 10 /* block spacing */
+        let headerLabelHeight: CGFloat = 14
+        let blockSpacing: CGFloat = 10   // ScrollView's own VStack spacing
+        let verticalPadding: CGFloat = 24   // ScrollView content's own .padding(12), both edges
+        let width = PingStackPanel.width - 24   // that same padding, applied horizontally
+        let lines = questions.reduce(CGFloat(0)) { total, q in
+            total + headerLabelHeight + TextMeasure.height(q.question, font: CardFlowMetrics.font, width: width)
         }
+        return lines + CGFloat(max(0, questions.count - 1)) * blockSpacing + verticalPadding
     }
 }
 
