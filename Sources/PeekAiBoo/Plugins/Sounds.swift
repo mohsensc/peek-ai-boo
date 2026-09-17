@@ -32,43 +32,51 @@ final class Sounds: NSObject, Feature {
     }
 }
 
-/// NeedsYou and done each get a preset picker, a preview button and a
-/// mute toggle. One volume slider covers both.
+/// NeedsYou and done each get their own section: a preset picker, a preview
+/// button and a mute toggle. One volume slider covers both.
 private struct SoundSettingsSection: View {
     @State private var settings = SoundSettings.load()
 
+    @ViewBuilder
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Sounds").font(.headline)
-            eventRow(title: "Needs you", preset: $settings.needsYouPreset, muted: $settings.needsYouMuted)
-            eventRow(title: "Done", preset: $settings.donePreset, muted: $settings.doneMuted)
-            HStack {
-                Text("Volume")
+        eventSection(title: "Needs you", preset: $settings.needsYouPreset, muted: $settings.needsYouMuted)
+        eventSection(title: "Done", preset: $settings.donePreset, muted: $settings.doneMuted)
+        Section("Volume") {
+            HStack(spacing: 10) {
+                Image(systemName: "speaker.fill")
+                    .foregroundStyle(.secondary)
                 Slider(value: $settings.volume, in: 0...1)
+                Image(systemName: "speaker.wave.3.fill")
+                    .foregroundStyle(.secondary)
             }
         }
-        .onChange(of: settings) { _, newValue in
-            newValue.save()
-        }
+        .onChange(of: settings) { _, newValue in newValue.save() }
     }
 
-    private func eventRow(title: String, preset: Binding<ChirpPreset>, muted: Binding<Bool>) -> some View {
-        HStack {
-            Text(title).frame(width: 72, alignment: .leading)
-            Picker("", selection: preset) {
-                ForEach(ChirpPreset.allCases) { p in
-                    Text(p.rawValue.capitalized).tag(p)
+    private func eventSection(title: String, preset: Binding<ChirpPreset>, muted: Binding<Bool>) -> some View {
+        Section(title) {
+            HStack {
+                Text("Sound")
+                Spacer()
+                Picker("", selection: preset) {
+                    ForEach(ChirpPreset.allCases) { p in
+                        Text(p.rawValue.capitalized).tag(p)
+                    }
                 }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 120)
+                Button {
+                    Chirp.play(preset.wrappedValue, volume: settings.volume)
+                } label: {
+                    Image(systemName: "play.fill")
+                }
+                .buttonStyle(.borderless)
+                .buttonBorderShape(.circle)
+                .help("Preview")
             }
-            .labelsHidden()
-            .frame(width: 100)
-            Button {
-                Chirp.play(preset.wrappedValue, volume: settings.volume)
-            } label: {
-                Image(systemName: "play.fill")
-            }
-            .buttonStyle(.borderless)
             Toggle("Mute", isOn: muted)
+                .toggleStyle(.switch)
         }
     }
 }

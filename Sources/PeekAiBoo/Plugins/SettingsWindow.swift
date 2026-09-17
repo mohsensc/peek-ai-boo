@@ -8,7 +8,7 @@ import SwiftUI
 enum SettingsWindow {
     static func make(app: AppModel) -> NSWindow {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 260),
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 280),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -21,22 +21,20 @@ enum SettingsWindow {
     }
 }
 
-/// Every feature's settings section, in registration order, with a divider
-/// between them.
+/// Every feature's settings, as sections of one grouped Form — the same
+/// shape as System Settings on Tahoe. A feature contributes a `Section` (or
+/// a group of them); this just lines them up.
 private struct SettingsRootView: View {
     let app: AppModel
 
     var body: some View {
-        let sections = app.features.compactMap { $0.settingsSections(app: app) }
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
-                    if index > 0 { Divider() }
-                    section
-                }
+        Form {
+            ForEach(Array(app.features.compactMap { $0.settingsSections(app: app) }.enumerated()), id: \.offset) { _, section in
+                section
             }
-            .padding(16)
         }
-        .frame(width: 340)
+        .formStyle(.grouped)
+        .frame(width: 380)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
