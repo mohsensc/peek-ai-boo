@@ -103,4 +103,28 @@ import Testing
         field.type("changed")
         #expect(field.text == "hello")
     }
+
+    // Ping capsules (row 1's ✎, the expanded card's Other pill) show
+    // "selected" as `isOpen || committed` so it reads green from the click
+    // through typing until sent, not just once committed — see
+    // docs/design.md. This is the truth table both views rely on.
+    @Test func activeFromOpenThroughCommitNotJustAfter() {
+        func active(_ f: OtherAnswer) -> Bool { f.isOpen || f.committed }
+        var field = OtherAnswer()
+        #expect(!active(field))
+        field.open()
+        #expect(active(field))
+        field.type("hi")
+        #expect(active(field))
+        _ = field.submit()
+        #expect(active(field))
+    }
+
+    @Test func inactiveAgainAfterCancel() {
+        func active(_ f: OtherAnswer) -> Bool { f.isOpen || f.committed }
+        var field = OtherAnswer()
+        field.open()
+        field.cancel()
+        #expect(!active(field))
+    }
 }

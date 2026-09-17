@@ -78,20 +78,28 @@ public struct Question: Sendable, Equatable {
         return answerMessage(questions, answers: merged)
     }
 
-    /// Few enough, short enough options to answer straight from the
-    /// collapsed ping capsule instead of needing the expanded card. A rough
+    /// Exactly two options, single-select, short enough to draw as two
+    /// small glass buttons in row 1 itself — replacing the deny/allow slot
+    /// an approval gets — instead of needing the expanded card. A rough
     /// character budget rather than real text measurement — same "good
     /// enough" spirit as the panel's own row-height estimates — so this
     /// stays a cheap, pure check the view layer can call before laying
-    /// anything out.
-    public static let inlineMaxOptions = 4
-    public static let inlineMaxChars = 28
+    /// anything out. Three or more options, multiSelect, or going over
+    /// budget all fall through to the "asks · N" count-and-expand row.
+    public static let inlineOptionCount = 2
+    public static let inlineMaxChars = 16
 
     public var fitsInline: Bool {
-        guard !options.isEmpty, options.count <= Self.inlineMaxOptions else { return false }
-        let separators = max(0, options.count - 1) * 2   // ", " between capsules
-        let chars = options.reduce(0) { $0 + $1.label.count } + separators
+        guard options.count == Self.inlineOptionCount, !multiSelect else { return false }
+        let chars = options.reduce(0) { $0 + $1.label.count }
         return chars <= Self.inlineMaxChars
+    }
+
+    /// Row 1's "asks · N" for a question that doesn't fit inline: every
+    /// option across every question, since that's what's actually left to
+    /// answer — not just how many questions there are.
+    public static func expandCount(_ questions: [Question]) -> Int {
+        questions.reduce(0) { $0 + $1.options.count }
     }
 
     /// A one-line "Other" field doesn't need much room, and this keeps a
