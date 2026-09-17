@@ -193,8 +193,14 @@ struct GlassIconButton: View {
                 }
                 .buttonStyle(.plain)
             } else if #available(macOS 26, *) {
+                // .glass's automatic border shape is a fixed corner radius,
+                // not a capsule -- it only reads as circular by accident at
+                // a small enough size (which is why the 16-18pt row-1
+                // buttons looked fine and the header's plain-24pt ones
+                // didn't). .circle makes it explicit regardless of size.
                 Button(action: action) { icon }
                     .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
             } else {
                 Button(action: action) {
                     icon

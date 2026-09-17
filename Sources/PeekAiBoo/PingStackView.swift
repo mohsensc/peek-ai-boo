@@ -7,7 +7,10 @@ import SwiftUI
 /// see PingStackPanel.relayout.
 @MainActor
 enum PingRowMetrics {
-    static let cardHeaderHeight: CGFloat = 40
+    // 18pt circular buttons plus the ghost, tightened from 40 now that the
+    // header has no separate Send row's slack to borrow from elsewhere.
+    static let cardHeaderHeight: CGFloat = 34
+    static let cardIconButtonSize: CGFloat = 18
     static let cardFooterPadding: CGFloat = 24   // the footer VStack's own .padding(12), both edges
     static let questionBlockSpacing: CGFloat = 8   // footer VStack's spacing between questions
     static let otherFieldRowHeight: CGFloat = 34   // the field itself (30) + the 4pt gap above it
@@ -524,8 +527,8 @@ struct PingCardView: View {
         HStack(spacing: 8) {
             PingSessionLabel(key: entry.key, app: app)
             Spacer()
-            GlassIconButton(systemName: "chevron.up", help: "Collapse", action: onCollapse)
-            GlassIconButton(systemName: "apple.terminal", help: "Terminal") {
+            GlassIconButton(systemName: "chevron.up", help: "Collapse", size: PingRowMetrics.cardIconButtonSize, action: onCollapse)
+            GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: PingRowMetrics.cardIconButtonSize) {
                 PingActions.jump(entry.key, app)
             }
         }
