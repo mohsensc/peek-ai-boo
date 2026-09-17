@@ -53,4 +53,10 @@ for feature in features {
     feature.start(app: model)
 }
 
+// For screenshot scripts, which can't send the island a synthetic click:
+// starts it open instead of waiting for one.
+if CommandLine.arguments.contains("--open") {
+    model.isOpen = true
+}
+
 app.run()
