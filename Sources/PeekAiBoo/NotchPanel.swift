@@ -3,12 +3,14 @@ import PeekCore
 import SwiftUI
 
 /// Borderless, nonactivating, floats above the menu bar (`.statusBar` beats
-/// the menu bar's own level). It never becomes key, so mouseDown is
-/// forwarded by hand instead of riding SwiftUI's normal key-window path.
+/// the menu bar's own level). It's never key except while an Other answer
+/// field is being edited, so mouseDown is forwarded by hand the rest of the
+/// time instead of riding SwiftUI's normal key-window path.
 final class NotchPanel: NSPanel {
     private let app: AppModel
     private let geometry: NotchGeometry
     private var outsideClickMonitor: Any?
+    private var isEditingText = false
 
     init(app: AppModel) {
         self.app = app
@@ -39,14 +41,31 @@ final class NotchPanel: NSPanel {
         contentView = hosting
 
         app.onChange = { [weak self] in self?.relayout() }
+        app.onEditingChanged = { [weak self] editing in self?.setEditingText(editing) }
     }
 
-    override var canBecomeKey: Bool { false }
+    override var canBecomeKey: Bool { isEditingText }
     override var canBecomeMain: Bool { false }
 
     func show() {
         orderFrontRegardless()
         installOutsideClickMonitor()
+    }
+
+    /// A nonactivating panel can become key without stealing the owning
+    /// app's activation, which is the whole point: typing in the Other
+    /// field doesn't pull focus off whatever terminal was frontmost.
+    private func setEditingText(_ editing: Bool) {
+        if editing {
+            isEditingText = true
+            makeKey()
+        } else {
+            // Give up first responder before dropping key status, or the
+            // text field can be left thinking it still owns the caret.
+            makeFirstResponder(nil)
+            isEditingText = false
+            resignKey()
+        }
     }
 
     private func relayout() {
@@ -104,10 +123,15 @@ final class NotchPanel: NSPanel {
 }
 
 /// SwiftUI's gestures expect the usual key-window responder chain. A
-/// nonactivating panel never gets that, so mouseDown is nudged along here.
+/// nonactivating panel never gets that, so mouseDown is nudged along here —
+/// except into the Other field, which needs to keep its own first
+/// responder so the caret and text selection work.
 final class ClickCatchingHostingView<Content: View>: NSHostingView<Content> {
     override func mouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
+        let hit = hitTest(convert(event.locationInWindow, from: nil))
+        if !(hit is NSTextView) && !(hit is NSTextField) {
+            window?.makeFirstResponder(self)
+        }
         super.mouseDown(with: event)
     }
 

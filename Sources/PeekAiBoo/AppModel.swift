@@ -39,6 +39,11 @@ final class AppModel {
     /// Called after anything that might change what the panel should show.
     /// The panel sets this instead of us importing AppKit here.
     @ObservationIgnored var onChange: (() -> Void)?
+    /// Called when a text field starts or stops being edited (the "Other"
+    /// answer field, so far). The panel sets this to flip whether it can
+    /// become key, instead of us importing AppKit here.
+    @ObservationIgnored var onEditingChanged: ((Bool) -> Void)?
+    private var editingTextCount = 0
 
     private var pingGeneration = 0
     private var stillCheckGeneration = 0
@@ -78,6 +83,20 @@ final class AppModel {
     func setNote(_ key: SessionKey, _ note: String?) {
         store.setNote(key, note)
         onChange?()
+    }
+
+    /// Ref-counted since more than one field could plausibly be open at
+    /// once (two pending questions); only the 0-to-1 and 1-to-0 edges are
+    /// what the panel cares about.
+    func beginEditingText() {
+        editingTextCount += 1
+        if editingTextCount == 1 { onEditingChanged?(true) }
+    }
+
+    func endEditingText() {
+        guard editingTextCount > 0 else { return }
+        editingTextCount -= 1
+        if editingTextCount == 0 { onEditingChanged?(false) }
     }
 
     /// markSeen, then features in order until one returns true.
