@@ -11,17 +11,24 @@ CLAUDE.md edits, nothing leaves the Mac.
 
 - `peekaboo-hook`: C++, `clang++ -O2`, no deps. Reads the payload, adds
   terminal info, sends one line, exits 0.
-- `PeekAiBoo.app`: Swift 6.3, SwiftPM, Command Line Tools only, macOS 26.
-  Everything else. Carries the hook in `Contents/Helpers/`.
+- `PeekAiBoo.app`: Swift 6.3, SwiftPM, Command Line Tools only, macOS 14
+  minimum. Everything else. Carries the hook in `Contents/Helpers/`.
 - `install.sh`: builds, installs, registers hooks.
 
-Window: borderless nonactivating NSPanel at `.statusBar`, canJoinAllSpaces,
-fullScreenAuxiliary, stationary, ignoresCycle, LSUIElement. It's never key
-except while a question's "Other" field is being edited, so the
-NSHostingView subclass handles mouseDown the rest of the time. Notch:
-`safeAreaInsets.top` by the gap between the auxiliary top areas (32x185pt
-here). Built-in screen first, else a pill at top center. One TimelineView
-runs all ghosts at ~10fps, paused when still.
+Two borderless nonactivating NSPanels at `.statusBar`, canJoinAllSpaces,
+fullScreenAuxiliary, stationary, ignoresCycle, LSUIElement. The pill is
+fused to the notch, pure black, no outline, always up. Opening the island
+orders in a second panel below it: Liquid Glass on macOS 26 (a plain system
+material below that), a small gap under the pill, sized to its own
+content. That means the gap and the space around the panel's rounded
+corners are real desktop with no window over them, so a click there falls
+straight through instead of being swallowed. Neither panel is ever key
+except while the Other field is being edited, so the NSHostingView subclass
+forwards mouseDown by hand the rest of the time — and, on the glass panel,
+narrows hit testing to the rounded rect it actually draws, so its corners
+pass clicks through too. Notch: `safeAreaInsets.top` by the gap between the
+auxiliary top areas (32x185pt here). Built-in screen first, else a pill at
+top center. One TimelineView runs all ghosts at ~10fps, paused when still.
 
 ## Protocol
 

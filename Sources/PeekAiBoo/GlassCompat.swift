@@ -1,0 +1,109 @@
+import SwiftUI
+
+/// The one place that knows about Liquid Glass. Everything else asks for a
+/// surface, a button or a container and gets a plain system material below
+/// macOS 26 (or with Reduce Transparency on) instead of branching itself.
+enum GlassCompat {
+    static var isSupported: Bool {
+        if #available(macOS 26, *) { return true }
+        return false
+    }
+}
+
+private struct GlassSurface: ViewModifier {
+    var cornerRadius: CGFloat
+    var tinted = false
+    /// Concentric with the panel's own `.containerShape` on macOS 26 (inner
+    /// radius = outer minus the gap between them); a fixed radius below
+    /// that, since there's nothing to compute it from.
+    var concentric = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *), !reduceTransparency {
+            let glass: Glass = tinted ? .regular.tint(.accentColor) : .regular
+            if concentric {
+                content.glassEffect(glass, in: ConcentricRectangle())
+            } else {
+                content.glassEffect(glass, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            }
+        } else {
+            content.background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(tinted ? AnyShapeStyle(Color.accentColor.opacity(0.85)) : AnyShapeStyle(.regularMaterial))
+            )
+        }
+    }
+}
+
+private struct GlassCapsuleSurface: ViewModifier {
+    var tinted = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *), !reduceTransparency {
+            content.glassEffect(tinted ? .regular.tint(.accentColor) : .regular, in: .capsule)
+        } else {
+            content.background(
+                Capsule().fill(tinted ? AnyShapeStyle(Color.accentColor.opacity(0.85)) : AnyShapeStyle(.regularMaterial))
+            )
+        }
+    }
+}
+
+extension View {
+    /// The panel and its cards: regular Liquid Glass on macOS 26, a plain
+    /// system material everywhere else. `concentric` asks for the panel's
+    /// own corner math instead of a fixed radius (macOS 26 only).
+    func glassSurface(cornerRadius: CGFloat, tinted: Bool = false, concentric: Bool = false) -> some View {
+        modifier(GlassSurface(cornerRadius: cornerRadius, tinted: tinted, concentric: concentric))
+    }
+
+    /// Question options, the Other field, session-row hover: same material,
+    /// capsule-shaped.
+    func glassCapsule(tinted: Bool = false) -> some View {
+        modifier(GlassCapsuleSurface(tinted: tinted))
+    }
+}
+
+/// Groups glass shapes on the panel so they sample and morph together
+/// instead of each drawing its own isolated blur. A no-op below macOS 26.
+struct GlassGroup<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        if #available(macOS 26, *) {
+            GlassEffectContainer(spacing: 12) { content }
+        } else {
+            content
+        }
+    }
+}
+
+/// Allow/Deny/Send and the rest: `.glassProminent`/`.glass` on macOS 26, a
+/// filled or outlined capsule below that. One generic label so call sites
+/// don't have to know which path they're on.
+struct GlassButton<Label: View>: View {
+    var prominent = false
+    var action: () -> Void
+    @ViewBuilder var label: () -> Label
+
+    var body: some View {
+        if #available(macOS 26, *), prominent {
+            Button(action: action, label: label)
+                .buttonStyle(.glassProminent)
+        } else if #available(macOS 26, *) {
+            Button(action: action, label: label)
+                .buttonStyle(.glass)
+        } else {
+            Button(action: action) {
+                label()
+                    .foregroundStyle(prominent ? Color.white : Color.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(prominent ? Color.accentColor : Color.primary.opacity(0.1)))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}

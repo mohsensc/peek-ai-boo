@@ -22,7 +22,6 @@ struct ApprovalRow: View {
             HStack(spacing: 6) {
                 Text(project)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
                 Text(prompt.questions == nil ? "needs approval" : "has a question")
                     .font(.system(size: 11))
                     .foregroundStyle(.orange)
@@ -35,13 +34,13 @@ struct ApprovalRow: View {
             } else {
                 Text(detail)
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(.secondary)
                     .lineLimit(4)
             }
             actions
         }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.08)))
+        .padding(10)
+        .glassSurface(cornerRadius: 22, concentric: true)
     }
 
     /// Bash gets the whole command rather than the 60-char summary, since
@@ -58,19 +57,19 @@ struct ApprovalRow: View {
         if prompt.hookGone {
             Text("answer in terminal")
                 .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(.secondary)
         } else if let questions = prompt.questions {
             HStack {
                 Spacer()
-                pill("Send", filled: true) { send(questions) }
+                GlassButton(prominent: true, action: { send(questions) }) { Text("Send") }
                     .disabled(!ready(questions))
                     .opacity(ready(questions) ? 1 : 0.4)
             }
         } else {
             HStack(spacing: 8) {
                 Spacer()
-                pill("Deny", filled: false) { answer(.deny(message: nil)) }
-                pill("Allow", filled: true) { answer(.allow) }
+                GlassButton(action: { answer(.deny(message: nil)) }) { Text("Deny") }
+                GlassButton(prominent: true, action: { answer(.allow) }) { Text("Allow") }
             }
         }
     }
@@ -83,10 +82,9 @@ struct ApprovalRow: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(question.header.uppercased())
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.secondary)
             Text(question.question)
-                .font(.system(size: 11))
-                .foregroundStyle(.white)
+                .font(.system(size: 13))
                 .lineLimit(3)
             if !prompt.hookGone {
                 // Short labels sit on one line; long ones stack.
@@ -104,8 +102,10 @@ struct ApprovalRow: View {
     private func options(_ i: Int, _ question: Question) -> some View {
         Group {
             ForEach(Array(question.options.enumerated()), id: \.offset) { j, option in
-                pill(option.label, filled: (picks[i] ?? []).contains(j)) {
+                GlassButton(prominent: (picks[i] ?? []).contains(j), action: {
                     toggle(question: i, option: j, multi: question.multiSelect)
+                }) {
+                    Text(option.label)
                 }
                 .help(option.description)
             }
@@ -115,7 +115,7 @@ struct ApprovalRow: View {
 
     private func otherPill(_ i: Int) -> some View {
         let field = other(i)
-        return pill(field.committed ? field.text : "Other", filled: field.committed) {
+        return GlassButton(prominent: field.committed, action: {
             if field.isOpen {
                 cancelOther(i)
             } else if field.committed {
@@ -126,6 +126,8 @@ struct ApprovalRow: View {
                 setOther(i, opened)
                 focusedOther = i
             }
+        }) {
+            Text(field.committed ? field.text : "Other")
         }
     }
 
@@ -136,11 +138,10 @@ struct ApprovalRow: View {
                 set: { var field = other(i); field.type($0); setOther(i, field) }
             ))
             .textFieldStyle(.plain)
-            .font(.system(size: 11))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(Color.white.opacity(0.12)))
+            .font(.system(size: 13))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .glassCapsule()
             .focused($focusedOther, equals: i)
             .onSubmit { commitOther(i, question) }
             // Not onExitCommand: the field editor can claim Escape as
@@ -152,7 +153,7 @@ struct ApprovalRow: View {
             Button(action: { commitOther(i, question) }) {
                 Image(systemName: "arrow.turn.down.left")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(canSubmitOther(i) ? 0.9 : 0.3))
+                    .foregroundStyle(canSubmitOther(i) ? .primary : .tertiary)
             }
             .buttonStyle(.plain)
             .disabled(!canSubmitOther(i))
@@ -206,18 +207,5 @@ struct ApprovalRow: View {
             typed[i] = other(i).text
         }
         answer(.deny(message: Question.answerMessage(questions, answers: answers, typed: typed)))
-    }
-
-    private func pill(_ title: String, filled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(filled ? Color.black : Color.white)
-                .lineLimit(1)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(filled ? Color.white : Color.white.opacity(0.15)))
-        }
-        .buttonStyle(.plain)
     }
 }
