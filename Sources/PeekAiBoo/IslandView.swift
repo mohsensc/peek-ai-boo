@@ -27,7 +27,7 @@ struct PillView: View {
         .onTapGesture { app.isOpen.toggle() }
         .contextMenu { menu }
         .background(Color.black)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     @ViewBuilder
@@ -75,6 +75,22 @@ private struct AnimatedGhostRow: View {
         }
     }
 
+    /// Live sessions get a ghost, needsYou first then working then most
+    /// recent activity, capped at `PillGhostLayout.visibleSlots` -- the pill
+    /// never resizes, so the rest fold into `overflow` instead of a ghost.
+    /// Only the shown ones need to keep the timer awake: one hidden behind
+    /// the "+K" badge isn't on screen, so its pose flipping wouldn't be seen
+    /// anyway.
+    private var selection: (shown: [Session], overflow: Int) {
+        let sessions = app.store.sessions
+        let items = sessions.values.map {
+            PillGhostLayout.Item(id: ghostID($0), state: $0.state, lastEvent: $0.lastEvent)
+        }
+        let result = PillGhostLayout.selectShown(items)
+        let byID = Dictionary(uniqueKeysWithValues: sessions.values.map { (ghostID($0), $0) })
+        return (result.shown.compactMap { byID[$0] }, result.overflow)
+    }
+
     /// Each currently-moving session's pose fps (ghost.json: idle 2, working
     /// 1.5, needs 4, done 1). Waking up at whatever the fastest one of those
     /// needs, instead of a flat 10fps for all of them, is most of the idle-
@@ -82,7 +98,7 @@ private struct AnimatedGhostRow: View {
     /// doesn't need a 10Hz timer either.
     private var movingFPS: [Double] {
         let now = nowMs()
-        return app.store.sessions.values.compactMap { session in
+        return selection.shown.compactMap { session in
             session.isMoving(nowMs: now) ? GhostView.fps(for: session.pose) : nil
         }
     }
@@ -95,9 +111,7 @@ private struct AnimatedGhostRow: View {
     }
 
     private func row(phase: Double) -> some View {
-        let ordered = app.store.ordered
-        let shown = Array(ordered.prefix(8))
-        let overflow = ordered.count - shown.count
+        let (shown, overflow) = selection
         return HStack(spacing: 4) {
             ForEach(shown) { session in
                 GhostView(
@@ -107,11 +121,34 @@ private struct AnimatedGhostRow: View {
                 )
             }
             if overflow > 0 {
-                Text("+\(overflow)")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.7))
+                OverflowBadge(count: overflow) { app.isOpen = true }
             }
         }
+    }
+}
+
+private func ghostID(_ session: Session) -> String {
+    "\(session.id.client.rawValue):\(session.id.agent)"
+}
+
+/// The "+K" for live sessions past `PillGhostLayout.visibleSlots`: a real
+/// circle so it reads as one more slot in the row, not a stray label.
+/// Clicking it opens the full panel -- the same place clicking the pill
+/// itself goes, just a more direct route when you already know there's more
+/// waiting.
+private struct OverflowBadge: View {
+    let count: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("+\(count)")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 14, height: 14)
+                .glassCircle()
+        }
+        .buttonStyle(.plain)
     }
 }
 
