@@ -319,10 +319,17 @@ struct ApprovalPingCapsule: View {
     }
 }
 
-/// A question, collapsed: session/kind and the terminal button on row 1, the
-/// question itself on row 2, then (when it fits) the options inline as small
-/// capsules a click answers directly. Tapping the body anywhere else — or
-/// the whole row when it doesn't fit — expands to the card.
+/// A question, collapsed. Two shapes, chosen by `Question.fitsInline`:
+///
+/// - Two short single-select options: row 1 carries the terminal button and
+///   both options as direct-answer buttons, in the slot an approval would
+///   give deny/allow.
+/// - Everything else (3+ options, multiSelect, or options too long for row
+///   1): row 1 just says "asks · N" plus a chevron that expands to the
+///   full card, same as tapping the body anywhere else.
+///
+/// Row 2 is always the question text alone. Tapping the body always
+/// expands to the card, for either shape.
 struct QuestionPingCapsule: View {
     let entry: PingEntry
     let prompt: PendingPrompt
@@ -330,36 +337,36 @@ struct QuestionPingCapsule: View {
     let onExpand: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            PingRowShell(client: entry.key.client, pose: pose) {
-                HStack(spacing: 4) {
-                    PingKindLabel(project: project, kind: "asks")
-                    Spacer(minLength: 4)
-                    GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 18) {
-                        PingActions.jump(entry.key, app)
-                    }
-                }
-            } row2: {
-                PingDetailLine(text: prompt.summary)
-            }
-            if let question = inlineQuestion {
-                HStack(spacing: 6) {
-                    ForEach(Array(question.options.enumerated()), id: \.offset) { i, option in
-                        GlassButton(action: { answer(question, i) }) {
-                            Text(option.label).font(.system(size: 12))
-                        }
-                        .help(option.description)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, PingStackLayout.rowTwoPadding)
-            }
+        PingRowShell(client: entry.key.client, pose: pose) {
+            row1
+        } row2: {
+            PingDetailLine(text: prompt.summary)
         }
         .frame(height: PingRowMetrics.collapsedHeight(for: entry, app: app))
         .contentShape(Rectangle())
         .onTapGesture(perform: onExpand)
         .glassSurface(cornerRadius: PingStackLayout.collapsedCornerRadius, concentric: true)
+    }
+
+    @ViewBuilder
+    private var row1: some View {
+        if let question = inlineQuestion {
+            PingRowOne(project: project, kind: "asks") {
+                GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 18) {
+                    PingActions.jump(entry.key, app)
+                }
+                ForEach(Array(question.options.enumerated()), id: \.offset) { i, option in
+                    PingRowOneOptionButton(label: option.label) { answer(question, i) }
+                }
+            }
+        } else {
+            PingRowOne(project: project, kind: "asks · \(expandCount)") {
+                GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 18) {
+                    PingActions.jump(entry.key, app)
+                }
+                GlassIconButton(systemName: "chevron.down", help: "Expand", size: 18, action: onExpand)
+            }
+        }
     }
 
     private var project: String { app.store.sessions[entry.key]?.project ?? "?" }
@@ -369,6 +376,8 @@ struct QuestionPingCapsule: View {
         guard PingRowMetrics.showsInlineOptions(prompt) else { return nil }
         return prompt.questions?.first
     }
+
+    private var expandCount: Int { Question.expandCount(prompt.questions ?? []) }
 
     private func answer(_ question: Question, _ i: Int) {
         let message = Question.answerMessage([question], answers: [[question.options[i].label]])
