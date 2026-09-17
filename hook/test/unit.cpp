@@ -41,7 +41,7 @@ std::string extract_raw(const std::string& json, const std::string& key) {
     return "\x01UNTERMINATED";
 }
 
-// ---------------------------------------------------------------- scan --
+// scan
 
 void test_scan_tool_response_becomes_null() {
     const std::string big(1024 * 1024, 'x');
@@ -194,7 +194,7 @@ void test_scan() {
     test_scan_path_precedence();
 }
 
-// ------------------------------------------------------------ envelope --
+// envelope
 
 void test_verb_table() {
     using hook::verb_for;
@@ -304,7 +304,7 @@ void test_envelope() {
     test_envelope_hook_is_json_null_on_drop();
 }
 
-// ---------------------------------------------------------------- term --
+// term
 
 void test_term_walk_skips_shells() {
     std::map<pid_t, hook::ProcEntry> procs;
@@ -368,7 +368,7 @@ void test_term() {
     test_tty_path_nodev();
 }
 
-// -------------------------------------------------------------- decide --
+// decide
 
 void test_decide_allow() {
     const auto r = hook::parse_reply(R"({"decision":"allow"})");

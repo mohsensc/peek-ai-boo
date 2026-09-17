@@ -65,7 +65,7 @@ def basic_payload(event="PreToolUse", session_id="sess1", tool_name="Bash", cwd=
     return json.dumps(payload).encode()
 
 
-# --- 1. basic event: parses, v==1, fields match, silent, exit 0 ---------
+# basic event
 
 def test_basic_event():
     d = run_dir()
@@ -99,7 +99,7 @@ def test_basic_event():
     check("basic_event.exit0", proc.returncode == 0)
 
 
-# --- 2. no socket at all --------------------------------------------------
+# no socket at all
 
 def test_no_socket():
     d = run_dir()
@@ -110,7 +110,7 @@ def test_no_socket():
     check("no_socket.under_50ms", elapsed < 0.05, "%.1fms" % (elapsed * 1000))
 
 
-# --- 3. listener bound but never accepts ----------------------------------
+# listener bound but never accepts
 
 def test_listener_never_accepts():
     d = run_dir()
@@ -123,7 +123,7 @@ def test_listener_never_accepts():
         sock.close()
 
 
-# --- 4. 5 MiB stdin, no listener ------------------------------------------
+# 5 MiB stdin, no listener
 
 def test_5mib_stdin():
     d = run_dir()
@@ -140,7 +140,7 @@ def test_5mib_stdin():
     check("five_mib.exit0", proc.returncode == 0)
 
 
-# --- 5. 200 random nested payloads ----------------------------------------
+# 200 random nested payloads
 
 _EMOJI_LO, _EMOJI_HI = 0x1F300, 0x1F64F
 _CJK_LO, _CJK_HI = 0x4E00, 0x9FFF
@@ -241,7 +241,7 @@ def test_random_payloads(n=200):
     check("random_payloads.cut_bound", worst <= 4096 + 3, "worst=%d" % worst)
 
 
-# --- 6. decide replies -----------------------------------------------------
+# decide replies
 
 def _decide_payload(session_id="perm1", tool_name="Bash"):
     return json.dumps({
@@ -308,7 +308,7 @@ def test_decide_bad_replies():
         check("decide_bad.%s.exit0" % label, proc.returncode == 0)
 
 
-# --- 7. the agent dies while a decision is pending -------------------------
+# the agent dies while a decision is pending
 
 def test_agent_dies():
     d = run_dir()
@@ -354,7 +354,7 @@ def test_agent_dies():
     hold_thread.join(timeout=3)
 
 
-# --- 8. shell-skipping walk against the real process tree ------------------
+# shell-skipping walk against the real process tree
 
 def test_shell_walk_real():
     d = run_dir()
@@ -377,7 +377,7 @@ def test_shell_walk_real():
     check("shell_walk.exit0", proc.returncode == 0)
 
 
-# --- 9. client flag handling -------------------------------------------
+# client flag handling
 
 def test_client_codex():
     d = run_dir()
@@ -411,7 +411,7 @@ def test_client_missing_or_unknown():
     sock.close()
 
 
-# --- 10. 200 runs, no socket, timed ----------------------------------------
+# 200 runs, no socket, timed
 
 def test_200_runs_timed():
     d = run_dir()
@@ -428,7 +428,7 @@ def test_200_runs_timed():
     print("latency: 200 runs with no listener, %.3fs total, %.2fms/run" % (elapsed, per_run_ms))
 
 
-# --- 11. link check ----------------------------------------------------
+# link check
 
 def test_otool_deps():
     out = subprocess.check_output(["otool", "-L", HOOK]).decode()
