@@ -66,6 +66,14 @@ final class AppModel {
     /// for capturing the scrolled/pinned-options state without a synthetic
     /// click.
     @ObservationIgnored var debugExpandFirstQuestion = false
+    /// `--other-text`, paired with `--open-other`: types this into the
+    /// field it just opened, for capturing what a typed Other answer looks
+    /// like without a synthetic keystroke.
+    @ObservationIgnored var debugOtherText: String?
+    /// `--preselect-multi`: ticks the first two options of the first
+    /// multiSelect question the moment its card is showing — screenshot
+    /// scripts can't reach PingCardView's own @State picks any other way.
+    @ObservationIgnored var debugPreselectMulti = false
     @ObservationIgnored var features: [any Feature] = []
     /// Set once, right after `features`, so ping rendering can reach
     /// Approvals' pending prompts without every feature needing a say in

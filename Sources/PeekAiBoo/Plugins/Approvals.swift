@@ -35,7 +35,7 @@ final class Approvals: Feature {
                         self.releaseOthers(prompt.id, app: app)
                     }
                     if app.debugOpenOtherOnQuestion {
-                        self.openFirstOtherField(newPending, app: app)
+                        self.openFirstOtherField(newPending, text: app.debugOtherText, app: app)
                     }
                     if app.debugExpandFirstQuestion, app.expandedPingID == nil,
                        let firstQuestion = newPending.first(where: { $0.questions != nil }) {
@@ -168,11 +168,15 @@ final class Approvals: Feature {
 
     /// Same path a click on the Other pill takes, just triggered by a
     /// question showing up instead of a tap — see AppModel.debugOpenOtherOnQuestion.
-    private func openFirstOtherField(_ pending: [PendingPrompt], app: AppModel) {
+    /// `text`, from `--other-text`, also types into the field it just
+    /// opened — for capturing what a typed answer looks like, in either the
+    /// inline row 3 or the expanded card, without a synthetic keystroke.
+    private func openFirstOtherField(_ pending: [PendingPrompt], text: String?, app: AppModel) {
         for prompt in pending where prompt.questions != nil {
             guard others[prompt.id]?[0] == nil else { continue }
             var field = OtherAnswer()
             field.open()
+            if let text { field.type(text) }
             setOtherAnswer(prompt.id, 0, field, app: app)
         }
     }

@@ -68,6 +68,12 @@ if CommandLine.arguments.contains("--open-other") {
 if CommandLine.arguments.contains("--expand-ping") {
     model.debugExpandFirstQuestion = true
 }
+if let i = CommandLine.arguments.firstIndex(of: "--other-text"), i + 1 < CommandLine.arguments.count {
+    model.debugOtherText = CommandLine.arguments[i + 1]
+}
+if CommandLine.arguments.contains("--preselect-multi") {
+    model.debugPreselectMulti = true
+}
 if CommandLine.arguments.contains("--open-settings") {
     features.compactMap({ $0 as? Sounds }).first?.showSettings(app: model, raised: true)
 }

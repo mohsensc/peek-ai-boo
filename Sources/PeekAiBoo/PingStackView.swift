@@ -321,30 +321,38 @@ struct ApprovalPingCapsule: View {
 
 /// A question, collapsed. Two shapes, chosen by `Question.fitsInline`:
 ///
-/// - Two short single-select options: row 1 carries the terminal button and
-///   both options as direct-answer buttons, in the slot an approval would
-///   give deny/allow.
+/// - Two short single-select options: row 1 carries the terminal button,
+///   both options as direct-answer buttons, and ✎ for Other in the slot an
+///   approval would give deny/allow. Picking ✎ opens row 3, a typed answer
+///   field pinned under row 2 — Esc or ✎ again collapses it.
 /// - Everything else (3+ options, multiSelect, or options too long for row
 ///   1): row 1 just says "asks · N" plus a chevron that expands to the
 ///   full card, same as tapping the body anywhere else.
 ///
-/// Row 2 is always the question text alone. Tapping the body always
-/// expands to the card, for either shape.
+/// Row 2 is always the question text alone. Tapping the body — row 1 or
+/// row 2, not row 3's field — always expands to the card, for either shape.
 struct QuestionPingCapsule: View {
     let entry: PingEntry
     let prompt: PendingPrompt
     let app: AppModel
     let onExpand: () -> Void
 
+    @FocusState private var otherFocused: Bool
+
     var body: some View {
-        PingRowShell(client: entry.key.client, pose: pose) {
-            row1
-        } row2: {
-            PingDetailLine(text: prompt.summary)
+        VStack(alignment: .leading, spacing: 0) {
+            PingRowShell(client: entry.key.client, pose: pose) {
+                row1
+            } row2: {
+                PingDetailLine(text: prompt.summary)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onExpand)
+            if let question = inlineQuestion, other.isOpen {
+                otherRow3(question)
+            }
         }
         .frame(height: PingRowMetrics.collapsedHeight(for: entry, app: app))
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onExpand)
         .glassSurface(cornerRadius: PingStackLayout.collapsedCornerRadius, concentric: true)
     }
 
@@ -358,6 +366,9 @@ struct QuestionPingCapsule: View {
                 ForEach(Array(question.options.enumerated()), id: \.offset) { i, option in
                     PingRowOneOptionButton(label: option.label) { answer(question, i) }
                 }
+                GlassIconButton(systemName: "pencil", tinted: otherActive, help: "Other", size: 18) {
+                    toggleOther()
+                }
             }
         } else {
             PingRowOne(project: project, kind: "asks · \(expandCount)") {
@@ -367,6 +378,34 @@ struct QuestionPingCapsule: View {
                 GlassIconButton(systemName: "chevron.down", help: "Expand", size: 18, action: onExpand)
             }
         }
+    }
+
+    private func otherRow3(_ question: Question) -> some View {
+        HStack(spacing: 6) {
+            TextField("type an answer…", text: Binding(
+                get: { other.text },
+                set: { var field = other; field.type($0); setOther(field) }
+            ))
+            .textFieldStyle(.plain)
+            .font(.system(size: 13))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .glassCapsule()
+            .focused($otherFocused)
+            .onSubmit { commitAndSend(question) }
+            .onKeyPress(.escape) { cancelOther(); return .handled }
+            .onAppear { otherFocused = true }
+
+            Button(action: { commitAndSend(question) }) {
+                Image(systemName: "arrow.turn.down.left")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(canSubmitOther ? .primary : .tertiary)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSubmitOther)
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, PingStackLayout.rowTwoPadding)
     }
 
     private var project: String { app.store.sessions[entry.key]?.project ?? "?" }
@@ -379,9 +418,49 @@ struct QuestionPingCapsule: View {
 
     private var expandCount: Int { Question.expandCount(prompt.questions ?? []) }
 
+    private var bindings: PingBindings {
+        app.approvals?.pingBindings(for: prompt, app: app)
+            ?? PingBindings(other: { _ in OtherAnswer() }, setOther: { _, _ in }, answer: { _ in })
+    }
+    /// Always question index 0 — the inline shape only ever shows for a
+    /// single question (PingRowMetrics.showsInlineOptions).
+    private var other: OtherAnswer { bindings.other(0) }
+    private func setOther(_ value: OtherAnswer) { bindings.setOther(0, value) }
+    /// ✎ reads as selected from the click through typing until sent, not
+    /// just once committed — see docs/design.md.
+    private var otherActive: Bool { other.isOpen || other.committed }
+    private var canSubmitOther: Bool { Question.cleanTypedAnswer(other.text) != nil }
+
     private func answer(_ question: Question, _ i: Int) {
         let message = Question.answerMessage([question], answers: [[question.options[i].label]])
-        app.approvals?.pingBindings(for: prompt, app: app).answer(.deny(message: message))
+        bindings.answer(.deny(message: message))
+    }
+
+    private func toggleOther() {
+        var field = other
+        if field.isOpen {
+            field.cancel()
+        } else if field.committed {
+            field = OtherAnswer()
+        } else {
+            field.open()
+        }
+        setOther(field)
+    }
+
+    private func commitAndSend(_ question: Question) {
+        var field = other
+        guard field.submit() != nil else { return }
+        setOther(field)
+        otherFocused = false
+        bindings.answer(.deny(message: Question.answerMessage([question], answers: [[]], typed: [0: field.text])))
+    }
+
+    private func cancelOther() {
+        var field = other
+        field.cancel()
+        setOther(field)
+        otherFocused = false
     }
 }
 
@@ -420,6 +499,15 @@ struct PingCardView: View {
         }
         .frame(width: PingStackPanel.width)
         .glassSurface(cornerRadius: Self.cornerRadius, concentric: true)
+        .onAppear {
+            // --preselect-multi: screenshot scripts can't click a card's own
+            // @State options, so seed the first multiSelect question's first
+            // two picks directly.
+            guard app.debugPreselectMulti, picks.isEmpty,
+                  let i = questions.firstIndex(where: \.multiSelect)
+            else { return }
+            picks[i] = Set(questions[i].options.indices.prefix(2))
+        }
     }
 
     private var header: some View {
@@ -487,7 +575,9 @@ struct PingCardView: View {
 
     private func otherPill(_ i: Int) -> some View {
         let field = other(i)
-        return GlassButton(prominent: field.committed, action: {
+        // Green from the click through typing until sent, not just once
+        // committed — see docs/design.md.
+        return GlassButton(prominent: field.isOpen || field.committed, action: {
             if field.isOpen {
                 cancelOther(i)
             } else if field.committed {
