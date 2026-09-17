@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs every scripts/checks/*.sh in name order, then prints a summary.
-# PRs add a check file here instead of editing this one.
+# New checks go in scripts/checks/ as their own file, not in here.
 cd "$(dirname "$0")/.." || exit 1
 fail=0
 summary=""
