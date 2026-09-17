@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The one place that knows about Liquid Glass. Everything else asks for a
@@ -8,6 +9,14 @@ enum GlassCompat {
         if #available(macOS 26, *) { return true }
         return false
     }
+
+    /// The one color every confirm/selected state uses: Allow, Send, a
+    /// picked option, and Other while it's open or committed. Not
+    /// `.accentColor` -- tinted glass rendered as flat gray on this Mac's
+    /// accent setting (confirmed with a pixel sample), so this is
+    /// `NSColor.systemGreen` by name, which still adapts to light/dark on
+    /// its own.
+    static let confirmTint = Color(nsColor: .systemGreen)
 }
 
 private struct GlassSurface: ViewModifier {
@@ -21,7 +30,7 @@ private struct GlassSurface: ViewModifier {
 
     func body(content: Content) -> some View {
         if #available(macOS 26, *), !reduceTransparency {
-            let glass: Glass = tinted ? .regular.tint(.accentColor) : .regular
+            let glass: Glass = tinted ? .regular.tint(GlassCompat.confirmTint) : .regular
             if concentric {
                 content.glassEffect(glass, in: ConcentricRectangle())
             } else {
@@ -30,7 +39,7 @@ private struct GlassSurface: ViewModifier {
         } else {
             content.background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(tinted ? AnyShapeStyle(Color.accentColor.opacity(0.85)) : AnyShapeStyle(.regularMaterial))
+                    .fill(tinted ? AnyShapeStyle(GlassCompat.confirmTint.opacity(0.85)) : AnyShapeStyle(.regularMaterial))
             )
         }
     }
@@ -42,10 +51,10 @@ private struct GlassCapsuleSurface: ViewModifier {
 
     func body(content: Content) -> some View {
         if #available(macOS 26, *), !reduceTransparency {
-            content.glassEffect(tinted ? .regular.tint(.accentColor) : .regular, in: .capsule)
+            content.glassEffect(tinted ? .regular.tint(GlassCompat.confirmTint) : .regular, in: .capsule)
         } else {
             content.background(
-                Capsule().fill(tinted ? AnyShapeStyle(Color.accentColor.opacity(0.85)) : AnyShapeStyle(.regularMaterial))
+                Capsule().fill(tinted ? AnyShapeStyle(GlassCompat.confirmTint.opacity(0.85)) : AnyShapeStyle(.regularMaterial))
             )
         }
     }
@@ -57,10 +66,10 @@ private struct GlassCircleSurface: ViewModifier {
 
     func body(content: Content) -> some View {
         if #available(macOS 26, *), !reduceTransparency {
-            content.glassEffect(tinted ? .regular.tint(.accentColor) : .regular, in: .circle)
+            content.glassEffect(tinted ? .regular.tint(GlassCompat.confirmTint) : .regular, in: .circle)
         } else {
             content.background(
-                Circle().fill(tinted ? AnyShapeStyle(Color.accentColor.opacity(0.85)) : AnyShapeStyle(.regularMaterial))
+                Circle().fill(tinted ? AnyShapeStyle(GlassCompat.confirmTint.opacity(0.85)) : AnyShapeStyle(.regularMaterial))
             )
         }
     }
@@ -113,6 +122,10 @@ struct GlassButton<Label: View>: View {
         if #available(macOS 26, *), prominent {
             Button(action: action, label: label)
                 .buttonStyle(.glassProminent)
+                // .glassProminent draws from the system accent, not from a
+                // Glass value's own .tint -- without this it rendered as
+                // flat gray on this Mac's accent setting. See GlassCompat.confirmTint.
+                .tint(GlassCompat.confirmTint)
         } else if #available(macOS 26, *) {
             Button(action: action, label: label)
                 .buttonStyle(.glass)
@@ -122,7 +135,7 @@ struct GlassButton<Label: View>: View {
                     .foregroundStyle(prominent ? Color.white : Color.primary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
-                    .background(Capsule().fill(prominent ? Color.accentColor : Color.primary.opacity(0.1)))
+                    .background(Capsule().fill(prominent ? GlassCompat.confirmTint : Color.primary.opacity(0.1)))
             }
             .buttonStyle(.plain)
         }
