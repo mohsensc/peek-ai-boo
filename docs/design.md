@@ -130,7 +130,9 @@ second ping stacking on the first) restarts the wave, even when the
 session's own state doesn't change. Seen, both needsYou and done hold a
 still frame regardless of the wave, and needsYou keeps its badge either way.
 Seen means you opened the island, jumped there, or (done only) clicked its
-info ping — see Pings. The count is all needsYou sessions.
+info ping — see Pings. A faded info ping doesn't mark its session seen by
+itself; the ghost just keeps animating unseen, same as if the ping had
+never shown up. The count is all needsYou sessions.
 
 Which chirp plays is configurable: a handful of synthesized 8-bit presets
 per event, picked and muted independently, plus one master volume, all set
@@ -165,39 +167,79 @@ Persistence depends on kind:
   questions): stays until that prompt resolves, by any of the same paths a
   panel row resolves by (a click here, a click in the panel, or the
   terminal). Resolving elsewhere animates the capsule away.
-- **Info** (a done, unseen session): stays until clicked. No timer. A click
-  marks that one session seen and dismisses it, same as `markSeen`.
+- **Info** (a done, unseen session): fades on its own after
+  `PingStackLayout.doneFadeMs` (2.5s), measured from the session's
+  `lastEvent` — a pure function of elapsed time, same idea as the needsYou
+  wave, not a per-view timer. No click needed, but the whole capsule is
+  still clickable while it's up and jumps to that session's terminal
+  (`PingActions.jump`, same path a session row uses), which is what keeps
+  "always be able to link to the terminal" true even though there's no
+  terminal button on it. That jump also runs `markSeen`, same as ever;
+  the ghost still animates by the ordinary seen/unseen rules regardless of
+  whether the ping itself has faded. Done pings never count toward the
+  stack's "+N more" and never bump an approval or question out of a
+  guaranteed slot — `PingStackLayout.selectShown` gives blocking prompts up
+  to `visibleLimit` first and only lets done pings fill what's left over.
 
 Every capsule and card carries a terminal button (TerminalJump, same as a
 session row) and the session's ghost, static — the pill already animates
 that session, so a second animated copy here would undo the point of
 keeping this cheap. The ghost sits in its own leading column, vertically
-centered against both collapsed lines.
+centered against the row(s) beside it. A done ping is the exception: one
+line, no row 2, no buttons at all — just the ghost and "session · done" —
+since there's nothing to answer and nowhere it needs to grow.
 
-A collapsed row is two lines beside that ghost. Row 1: session name
-(semibold), then a short kind word ("needs approval", "asks", "done"), then
-whatever buttons that kind gets — small circular glass buttons with SF
-Symbols, sized to row 1 rather than the panel's usual 24pt, since a
-question ping only needs the terminal button and an approval needs terminal
-plus deny (✗) and allow (✓, accent glass); hookGone shows "answer in
-terminal" text instead of deny/allow. Row 2: the request or message alone
-(the command, the question, or the info ping's note), full width,
+A collapsed approval/question row is two lines beside that ghost. Row 1:
+session name (semibold, truncating first — see below), then "· " and a
+short kind word ("needs approval", "asks", "asks · N", "done"), then
+whatever buttons that kind gets, wrapped together with the kind word in a
+`fixedSize` cluster so it never gives up space to the name. Small circular
+glass buttons with SF Symbols, sized to row 1 rather than the panel's usual
+24pt: an approval gets terminal plus deny (✗) and allow (✓, accent glass);
+hookGone shows "answer in terminal" text instead of deny/allow. Row 2: the
+request or message alone (the command or the question), full width,
 middle-truncated only if it still doesn't fit — so a long shell command or
-filename keeps both ends visible instead of just its start. Answering an
+question keeps both ends visible instead of just its start. Answering an
 approval goes through the exact same Approvals.answer / ApprovalDesk.answer
 path a panel row's buttons use, so "answered once, never after resolution"
 is one guarantee, not two.
 
-A question ping's row 2 is the question itself. If there's exactly one
-question and its options are few and short enough (`Question.fitsInline`:
-≤4 options, ≤28 combined characters), they're drawn inline as small
-capsules below the two lines, a click answers directly. Otherwise, or on
-tapping the row body, it morphs into a card: header (ghost, project,
-collapse, terminal) on top, the question(s) and their context scrolling in
-the middle, answers — including Other and its text field — pinned at the
-bottom so they never scroll out of reach. The card's height is capped at a
-fraction of the screen's visible height (`PingCardHeight`); only the
-context area scrolls, the header and footer never shrink.
+**Truncation priority**: row 1's session name is the one side that gives up
+space. The kind word and its buttons draw at their own natural width
+(`fixedSize`, `layoutPriority(1)`) regardless of how wide the real glass
+buttons render — macOS 26 draws them wider than the frame they're asked
+for — so a long session name is what truncates, never "needs approval"
+clipping to "needs appro…". `PingRowOneBudget` in PeekCore is a rough,
+testable sanity check on this (reserved cluster width plus a minimum name
+width), not a claim about exact pixels.
+
+A question ping's row 2 is always the question itself; row 1 depends on
+`Question.fitsInline` (exactly two single-select options, short enough
+combined — see `PingStackLayout`'s budget above):
+
+- **Fits inline**: row 1 draws both options as small direct-answer buttons
+  plus ✎ for Other, in the slot an approval's deny/allow would take. ✎
+  turns green (`isOpen || committed`, so it stays that way through typing,
+  not just once sent) and opens row 3 — a native text field plus a send
+  arrow, appended under row 2, growing the capsule by
+  `PingStackLayout.rowThreeHeight`. Enter (or the arrow) sends; Esc, or ✎
+  again, collapses row 3 without answering. Row 3 isn't part of the
+  tappable body — only row 1/row 2 expand to the card.
+- **Doesn't fit** (3+ options, multiSelect, or options too wide): row 1
+  just says "asks · N" (`Question.expandCount`: every option across every
+  question) plus a chevron that expands to the card, same as tapping the
+  body anywhere else.
+
+Tapping the body of either shape — anywhere on row 1 or row 2 — morphs it
+into the same expanded card: header (ghost, project, collapse, terminal) on
+top, the question(s) and their context scrolling in the middle, answers —
+including Other and its text field — pinned at the bottom so they never
+scroll out of reach. Other's pill turns green the same way as the inline
+✎ (`isOpen || committed`), for the same reason. Multi-select toggles
+options green and answers all of them, typed Other included, through one
+Send button. The card's height is capped at a fraction of the screen's
+visible height (`PingCardHeight`); only the context area scrolls, the
+header and footer never shrink.
 
 Reduce Motion drops the spring/morph animations; Reduce Transparency drops
 to the same plain-material fallback every other glass surface here uses
@@ -291,7 +333,13 @@ For scripts that can't send the island a synthetic click:
 - `--open`: starts with the full panel open.
 - `--open-other`: opens the first question's Other field the moment one
   shows up.
+- `--other-text <text>`: paired with `--open-other`, also types `text` into
+  the field it just opened — the inline row 3 or the card, whichever is
+  showing.
 - `--expand-ping`: morphs the first question ping straight to its card.
+- `--preselect-multi`: ticks the first two options of the first multiSelect
+  question once its card is up — a screenshot script can't reach a card's
+  own `@State` picks any other way.
 - `--open-settings`: opens Settings, raised to `.floating` since an
   accessory-policy app doesn't reliably win z-order over whatever already
   has focus (which a screenshot script always does).
