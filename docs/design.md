@@ -134,6 +134,16 @@ info ping — see Pings. A faded info ping doesn't mark its session seen by
 itself; the ghost just keeps animating unseen, same as if the ping had
 never shown up. The count is all needsYou sessions.
 
+The pill's own ghost row only ever shows live sessions (gone means removed
+from `sessions`, not hidden), capped at `PillGhostLayout.visibleSlots` (4 —
+measured from the pill's fixed 110pt wing beside the notch at 13pt ghosts
+and 4pt spacing, with room held for the badge below). Past the cap, the rest
+collapse into a small circle badge, "+K", right after the last ghost.
+Priority for the slots: needsYou first, then working, then most recent
+activity — a session waiting on you is never one of the ones folded into K.
+Clicking the badge opens the full panel. `PillGhostLayout.selectShown` is
+the pure version of this; `AnimatedGhostRow` just draws whatever it returns.
+
 Which chirp plays is configurable: a handful of synthesized 8-bit presets
 per event, picked and muted independently, plus one master volume, all set
 from a small settings window off the right-click menu. Still no sound
@@ -195,7 +205,7 @@ short kind word ("needs approval", "asks", "asks · N", "done"), then
 whatever buttons that kind gets, wrapped together with the kind word in a
 `fixedSize` cluster so it never gives up space to the name. Small circular
 glass buttons with SF Symbols, sized to row 1 rather than the panel's usual
-24pt: an approval gets terminal plus deny (✗) and allow (✓, accent glass);
+24pt: an approval gets terminal plus deny (✗) and allow (✓, green glass);
 hookGone shows "answer in terminal" text instead of deny/allow. Row 2: the
 request or message alone (the command or the question), full width,
 middle-truncated only if it still doesn't fit — so a long shell command or
@@ -244,6 +254,13 @@ header and footer never shrink.
 Reduce Motion drops the spring/morph animations; Reduce Transparency drops
 to the same plain-material fallback every other glass surface here uses
 (`GlassCompat`).
+
+Every "green" above is system green (`NSColor.systemGreen`), not the accent
+color — tinted glass rendered as flat gray under this Mac's accent setting,
+system green doesn't, and it still adapts to light/dark on its own. One
+constant, `GlassCompat.confirmTint`, backs every confirm/selected state:
+Allow, Send, a picked option, Other while open or committed. Everything
+else stays neutral glass.
 
 ## Approvals and questions
 
@@ -351,6 +368,18 @@ For scripts that can't send the island a synthetic click:
   AppKit hitTest check at each ping capsule's center and at the midpoint of
   every gap between them. A capture script reads the frames to
   `screencapture -R` just the relevant rect.
+
+## Shapes
+
+No square corners. Every rect is a continuous rounded rect
+(`RoundedRectangle(cornerRadius:style: .continuous)` or `ConcentricRectangle`
+inside something with a `containerShape`) or a capsule/circle — the one
+exception is the pixel ghost sprites, which keep their square pixels on
+purpose. Borders are a hairline separator at most, usually none; the glass
+edge does the work an outline would. Anything that draws its own content
+inside a shape (a scrolled question card, a collapsed ping row) clips to
+that same shape instead of trusting the glass background to do it, since
+`.glassEffect`/`.background` draw behind content, not around it.
 
 ## Not in v1
 
