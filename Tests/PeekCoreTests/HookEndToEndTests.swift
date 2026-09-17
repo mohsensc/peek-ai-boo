@@ -79,8 +79,8 @@ import Testing
 
         // The hook blocks on decide.sock until it gets a reply, so it has to
         // run off the test's own task while we wait for the connection and
-        // hand-write the reply DecideReply expects (approvals may not be
-        // merged yet, so this is written here rather than reused).
+        // hand-write the reply DecideReply expects, to check the wire format
+        // directly rather than going through that type.
         let resultTask = Task.detached {
             self.runHook(client: "claude", stdin: Data(payload.utf8), env: ["PEEKABOO_DIR": dir.path])
         }

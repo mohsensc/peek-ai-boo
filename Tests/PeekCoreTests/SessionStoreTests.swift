@@ -152,9 +152,8 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
     }
 
     @Test func endPromptAfterStopStaysDone() {
-        // A Stop can resolve the last pending prompt (the design doc's
-        // resolution rule includes Stop), and endPrompt runs after it. The
-        // session should stay done, not bounce back to working.
+        // A Stop can resolve the last pending prompt, and endPrompt runs
+        // after it. The session should stay done, not bounce back to working.
         var store = SessionStore()
         _ = store.apply(ev("SessionStart", ts: 1))
         _ = store.apply(ev("PreToolUse", ts: 2, tool: "Bash"))
