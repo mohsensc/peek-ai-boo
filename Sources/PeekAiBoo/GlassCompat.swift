@@ -120,12 +120,25 @@ struct GlassButton<Label: View>: View {
 
     var body: some View {
         if #available(macOS 26, *), prominent {
-            Button(action: action, label: label)
-                .buttonStyle(.glassProminent)
-                // .glassProminent draws from the system accent, not from a
-                // Glass value's own .tint -- without this it rendered as
-                // flat gray on this Mac's accent setting. See GlassCompat.confirmTint.
-                .tint(GlassCompat.confirmTint)
+            // Neither .buttonStyle(.glassProminent).tint(...) nor
+            // Glass.tint(...) itself renders as anything but neutral gray
+            // here -- pixel-sampled both, zero-to-near-zero saturation
+            // either way. These panels are borderless, nonactivating and
+            // never key (see docs/design.md), and Liquid Glass's own
+            // tint/vibrancy resolution appears to flatten to gray on a
+            // window that's never the key window, no matter which color
+            // API is asked. A plain color fill isn't routed through that
+            // vibrancy machinery at all, so it's what actually shows green
+            // -- real glass blur underneath for the material, a flat green
+            // capsule on top for the color.
+            Button(action: action) {
+                label()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(GlassCompat.confirmTint))
+            }
+            .buttonStyle(.plain)
         } else if #available(macOS 26, *) {
             Button(action: action, label: label)
                 .buttonStyle(.glass)
@@ -157,8 +170,16 @@ struct GlassIconButton: View {
     var body: some View {
         Group {
             if #available(macOS 26, *), tinted {
-                Button(action: action) { icon }
-                    .buttonStyle(.glassProminent)
+                // Same finding as GlassButton (see its comment): neither
+                // .glassProminent nor Glass.tint() itself renders as
+                // anything but gray on these never-key panels. A plain
+                // color fill isn't routed through that vibrancy machinery.
+                Button(action: action) {
+                    icon
+                        .foregroundStyle(.white)
+                        .background(Circle().fill(GlassCompat.confirmTint))
+                }
+                .buttonStyle(.plain)
             } else if #available(macOS 26, *) {
                 Button(action: action) { icon }
                     .buttonStyle(.glass)
