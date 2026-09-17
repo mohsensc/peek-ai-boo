@@ -27,14 +27,18 @@ final class Sounds: NSObject, Feature {
     }
 
     /// Same as the menu item, for `--open-settings` — a screenshot script
-    /// has no menu to click.
-    func showSettings(app: AppModel) {
+    /// has no menu to click. Returns the window so a caller with a reason
+    /// to (a screenshot script fighting z-order with whatever's frontmost)
+    /// can adjust it.
+    @discardableResult
+    func showSettings(app: AppModel) -> NSWindow? {
         // LSUIElement means we never otherwise come forward.
         NSApp.activate()
         if window == nil {
             window = SettingsWindow.make(app: app)
         }
         window?.makeKeyAndOrderFront(nil)
+        return window
     }
 }
 
