@@ -10,56 +10,27 @@ struct PillView: View {
     let notchWidth: CGFloat
 
     var body: some View {
-        let _ = app.stillTick   // read so a still-check nudge forces a render
-        TimelineView(.animation(minimumInterval: 0.1, paused: !anyMoving)) { context in
-            let phase = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 6) {
-                ghostRow(phase: phase)
-                Spacer(minLength: notchWidth)
-                if let ping = app.ping {
-                    Text(ping.text)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                } else if app.store.waitingCount > 0 {
-                    Text("\(app.store.waitingCount)")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white)
-                }
+        HStack(spacing: 6) {
+            AnimatedGhostRow(app: app)
+            Spacer(minLength: notchWidth)
+            if let ping = app.ping {
+                Text(ping.text)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            } else if app.store.waitingCount > 0 {
+                Text("\(app.store.waitingCount)")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
             }
-            .padding(.horizontal, 10)
-            .frame(height: 36)
         }
+        .padding(.horizontal, 10)
+        .frame(height: 36)
         .contentShape(Rectangle())
         .onTapGesture { app.isOpen.toggle() }
         .contextMenu { menu }
         .background(Color.black)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private var anyMoving: Bool {
-        let now = nowMs()
-        return app.store.sessions.values.contains { $0.isMoving(nowMs: now) }
-    }
-
-    private func ghostRow(phase: Double) -> some View {
-        let ordered = app.store.ordered
-        let shown = Array(ordered.prefix(8))
-        let overflow = ordered.count - shown.count
-        return HStack(spacing: 4) {
-            ForEach(shown) { session in
-                GhostView(
-                    client: session.id.client,
-                    pose: session.pose,
-                    phase: session.isMoving(nowMs: nowMs()) ? phase : nil
-                )
-            }
-            if overflow > 0 {
-                Text("+\(overflow)")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.7))
-            }
-        }
     }
 
     @ViewBuilder
@@ -81,6 +52,65 @@ struct PillView: View {
 
     private var featureMenuItems: [NSMenuItem] {
         app.features.flatMap { $0.menuItems(app: app) }
+    }
+}
+
+/// The ghosts, alone: fixed-size sprites with no Spacer or other flexible
+/// layout in the mix. Isolating the TimelineView to just this made the
+/// idle-CPU regression go away — the old version wrapped the whole pill
+/// (ghosts, the notch-width Spacer, the count text) in one TimelineView, so
+/// every 10fps tick re-ran layout for the flexible Spacer too. Ghosts alone
+/// don't need that: swapping which baked-in frame a GhostView draws never
+/// changes anyone's size.
+private struct AnimatedGhostRow: View {
+    var app: AppModel
+
+    var body: some View {
+        let _ = app.stillTick   // read so a still-check nudge forces a render
+        let fps = movingFPS
+        TimelineView(.animation(minimumInterval: interval(for: fps), paused: fps.isEmpty)) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate
+            row(phase: phase)
+        }
+    }
+
+    /// Each currently-moving session's pose fps (ghost.json: idle 2, working
+    /// 1.5, needs 4, done 1). Waking up at whatever the fastest one of those
+    /// needs, instead of a flat 10fps for all of them, is most of the idle-
+    /// CPU fix: a lone working ghost only flips 1.5 times a second, so it
+    /// doesn't need a 10Hz timer either.
+    private var movingFPS: [Double] {
+        let now = nowMs()
+        return app.store.sessions.values.compactMap { session in
+            session.isMoving(nowMs: now) ? GhostView.fps(for: session.pose) : nil
+        }
+    }
+
+    /// Same headroom the old flat 0.1s had over the fastest pose (needs, at
+    /// 4fps): 2.5x oversampling so a flip never lands between two ticks.
+    private func interval(for movingFPS: [Double]) -> Double {
+        guard let maxFPS = movingFPS.max(), maxFPS > 0 else { return 1 }
+        return max(1 / (maxFPS * 2.5), 0.05)
+    }
+
+    private func row(phase: Double) -> some View {
+        let ordered = app.store.ordered
+        let shown = Array(ordered.prefix(8))
+        let overflow = ordered.count - shown.count
+        return HStack(spacing: 4) {
+            ForEach(shown) { session in
+                GhostView(
+                    client: session.id.client,
+                    pose: session.pose,
+                    phase: session.isMoving(nowMs: nowMs()) ? phase : nil
+                )
+            }
+            if overflow > 0 {
+                Text("+\(overflow)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+        }
     }
 }
 
