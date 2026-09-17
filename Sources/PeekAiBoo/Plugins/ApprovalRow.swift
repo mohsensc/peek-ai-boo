@@ -143,7 +143,10 @@ struct ApprovalRow: View {
             .background(Capsule().fill(Color.white.opacity(0.12)))
             .focused($focusedOther, equals: i)
             .onSubmit { commitOther(i, question) }
-            .onExitCommand { cancelOther(i) }
+            // Not onExitCommand: the field editor can claim Escape as
+            // cancelOperation: before that ever fires. onKeyPress runs
+            // ahead of the responder chain, so it always sees it.
+            .onKeyPress(.escape) { cancelOther(i); return .handled }
             .onAppear { focusedOther = i }
 
             Button(action: { commitOther(i, question) }) {
