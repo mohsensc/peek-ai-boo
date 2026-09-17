@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "PeekAiBoo",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v14)],
     targets: [
         .target(name: "PeekCore"),
         .executableTarget(name: "PeekAiBoo", dependencies: ["PeekCore"]),
