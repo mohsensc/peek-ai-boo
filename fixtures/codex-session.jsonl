@@ -1,0 +1,10 @@
+{"v":1,"client":"codex","event":"SessionStart","agent":"codex-1","cwd":"/Users/m/src/peek","ts":1000,"term":{"pid":5001,"tty":"/dev/ttys010","program":"ghostty"}}
+{"v":1,"client":"codex","event":"UserPromptSubmit","agent":"codex-1","cwd":"/Users/m/src/peek","ts":2000,"term":{"pid":5001}}
+{"v":1,"client":"codex","event":"PreToolUse","agent":"codex-1","cwd":"/Users/m/src/peek","ts":3000,"tool":"Bash","tool_use_id":"toolu_c1","hook":{"tool_input":{"command":"go test ./..."}},"term":{"pid":5001}}
+{"v":1,"client":"codex","event":"PostToolUse","agent":"codex-1","cwd":"/Users/m/src/peek","ts":4000,"tool":"Bash","tool_use_id":"toolu_c1","term":{"pid":5001}}
+{"v":1,"client":"codex","event":"Stop","agent":"codex-1","cwd":"/Users/m/src/peek","ts":5000,"term":{"pid":5001}}
+{"v":1,"client":"codex","event":"SessionEnd","agent":"codex-1","ts":6000}
+{"v":1,"client":"codex","event":"SessionStart","agent":"codex-2","cwd":"/Users/m/src/peek","ts":7000,"term":{"pid":5002,"tty":"/dev/ttys011","program":"ghostty"}}
+{"v":1,"client":"codex","event":"UserPromptSubmit","agent":"codex-2","cwd":"/Users/m/src/peek","ts":8000,"term":{"pid":5002}}
+{"v":1,"client":"codex","event":"Interrupt","agent":"codex-2","cwd":"/Users/m/src/peek","ts":9000,"term":{"pid":5002}}
+{"v":1,"client":"codex","event":"SessionEnd","agent":"codex-2","ts":10000}
