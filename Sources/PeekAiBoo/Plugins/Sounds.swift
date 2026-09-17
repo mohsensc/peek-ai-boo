@@ -23,6 +23,12 @@ final class Sounds: NSObject, Feature {
 
     @objc private func openSettings(_ sender: NSMenuItem) {
         guard let app = sender.representedObject as? AppModel else { return }
+        showSettings(app: app)
+    }
+
+    /// Same as the menu item, for `--open-settings` — a screenshot script
+    /// has no menu to click.
+    func showSettings(app: AppModel) {
         // LSUIElement means we never otherwise come forward.
         NSApp.activate()
         if window == nil {

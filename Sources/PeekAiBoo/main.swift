@@ -62,5 +62,8 @@ if CommandLine.arguments.contains("--open") {
 if CommandLine.arguments.contains("--open-other") {
     model.debugOpenOtherOnQuestion = true
 }
+if CommandLine.arguments.contains("--open-settings") {
+    features.compactMap({ $0 as? Sounds }).first?.showSettings(app: model)
+}
 
 app.run()
