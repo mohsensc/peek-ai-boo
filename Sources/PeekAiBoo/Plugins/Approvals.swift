@@ -36,6 +36,9 @@ final class Approvals: Feature {
                         if self.releaseOthers(prompt.id, app: app) { releasedAny = true }
                     }
                     if releasedAny { app.onChange?() }
+                    if app.debugOpenOtherOnQuestion {
+                        self.openFirstOtherField(newPending, app: app)
+                    }
                 }
                 self.pending = newPending
             }
@@ -131,6 +134,17 @@ final class Approvals: Feature {
     func closed(app: AppModel) {
         for id in Array(others.keys) {
             releaseOthers(id, app: app)
+        }
+    }
+
+    /// Same path a click on the Other pill takes, just triggered by a
+    /// question showing up instead of a tap — see AppModel.debugOpenOtherOnQuestion.
+    private func openFirstOtherField(_ pending: [PendingPrompt], app: AppModel) {
+        for prompt in pending where prompt.questions != nil {
+            guard others[prompt.id]?[0] == nil else { continue }
+            var field = OtherAnswer()
+            field.open()
+            setOtherAnswer(prompt.id, 0, field, app: app)
         }
     }
 

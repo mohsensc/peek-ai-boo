@@ -42,6 +42,10 @@ final class AppModel {
 
     let paths: Paths
     let home: String
+    /// `--open-other`, for screenshot scripts that can't click the Other
+    /// pill themselves: opens the first question's Other field the moment
+    /// one shows up.
+    @ObservationIgnored var debugOpenOtherOnQuestion = false
     @ObservationIgnored var features: [any Feature] = []
     /// Called after anything that might change what the panel should show.
     /// The panel sets this instead of us importing AppKit here.

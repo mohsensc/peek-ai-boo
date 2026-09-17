@@ -54,9 +54,13 @@ for feature in features {
 }
 
 // For screenshot scripts, which can't send the island a synthetic click:
-// starts it open instead of waiting for one.
+// starts it open instead of waiting for one, and --open-other reaches
+// into a question card's Other field the same way.
 if CommandLine.arguments.contains("--open") {
     model.isOpen = true
+}
+if CommandLine.arguments.contains("--open-other") {
+    model.debugOpenOtherOnQuestion = true
 }
 
 app.run()
