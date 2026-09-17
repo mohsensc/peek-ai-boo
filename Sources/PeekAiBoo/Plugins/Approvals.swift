@@ -22,7 +22,7 @@ final class Approvals: Feature {
             path: app.paths.decide,
             ingest: { [weak app] event in app?.ingest(event) },
             opened: { [weak app] prompt in
-                app?.beginPrompt(prompt.key)
+                app?.beginPrompt(prompt.key, ts: prompt.ts)
             },
             changed: { [weak self, weak app] in
                 guard let self, let desk = self.desk else { return }

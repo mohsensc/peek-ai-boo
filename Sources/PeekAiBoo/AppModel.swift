@@ -51,8 +51,9 @@ final class AppModel {
     /// Cleared whenever that prompt resolves or the panel takes over.
     var expandedPingID: String?
     /// No meaning of its own. IslandView reads it so a write forces a
-    /// re-render at the moment an idle ghost is due to go still, without a
-    /// repeating timer driving that render.
+    /// re-render at the moment an idle ghost, or a needsYou ghost's short
+    /// wave, is due to go still, without a repeating timer driving that
+    /// render.
     private(set) var stillTick = 0
 
     let paths: Paths
@@ -119,8 +120,14 @@ final class AppModel {
         onChange?()
     }
 
-    func beginPrompt(_ key: SessionKey) {
-        apply(store.beginPrompt(key))
+    func beginPrompt(_ key: SessionKey, ts: Int64) {
+        apply(store.beginPrompt(key, ts: ts))
+        // beginPrompt is the one path into needsYou that doesn't run through
+        // ingest() (ApprovalDesk.receive calls it after, not through, the
+        // event pipeline), so without this the wave-end wakeup here never
+        // gets armed and the ghost waves until some unrelated event forces
+        // a render.
+        scheduleStillCheck()
         onChange?()
     }
 
@@ -184,8 +191,11 @@ final class AppModel {
         }
     }
 
-    /// One asyncAfter for the soonest idle ghost that should stop bobbing,
-    /// so the island's TimelineView can pause instead of polling forever.
+    /// One asyncAfter for the soonest ghost that should stop moving on its
+    /// own — an idle ghost done bobbing, or a needsYou ghost past its short
+    /// wave — so the island's TimelineView can pause instead of polling
+    /// forever. Called from both ingest() and beginPrompt(), the two paths
+    /// that can start a needsYou wave.
     private func scheduleStillCheck() {
         guard let at = store.nextStillAt(nowMs: nowMs()) else { return }
         stillCheckGeneration += 1
