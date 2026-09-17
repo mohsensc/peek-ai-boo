@@ -219,10 +219,16 @@ private let fixtureQuestion = fixture("claude-question.jsonl").path
                      "tool_input": ["command": "npm test", "description": "Run the test suite"]],
         ]])
         let hook = try rig.fakeHook(["send", line])
+        // Every other test in this file waits on some rig state before
+        // checking the hook's output, which gives the main-actor dispatch
+        // a chance to run. This one didn't, so the whole 5s output timeout
+        // had to cover process spawn + connect + dispatch with no sync
+        // point of its own -- flaky under load. Wait for the thing the test
+        // actually cares about (the desk saw the request) first.
+        try await waitUntil { rig.ingested.contains { $0.event == "PermissionRequest" } }
         #expect(try await hook.output() == "<EOF, no reply>\n")
         #expect(rig.pending.isEmpty)
         #expect(rig.opened.isEmpty)
-        #expect(rig.ingested.contains { $0.event == "PermissionRequest" })
     }
 
     @Test func hookDiesMidWait() async throws {
