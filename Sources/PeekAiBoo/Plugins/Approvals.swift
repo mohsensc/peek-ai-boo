@@ -22,7 +22,7 @@ final class Approvals: Feature {
             path: app.paths.decide,
             ingest: { [weak app] event in app?.ingest(event) },
             opened: { [weak app] prompt in
-                app?.beginPrompt(prompt.key, reason: Self.reason(for: prompt))
+                app?.beginPrompt(prompt.key)
             },
             changed: { [weak self, weak app] in
                 guard let self, let desk = self.desk else { return }
@@ -31,16 +31,26 @@ final class Approvals: Feature {
                     // hookGone hides a row's Other field without an
                     // endPrompt to hang the cleanup on, so it's done here.
                     let previouslyGone = Set(self.pending.filter(\.hookGone).map(\.id))
-                    var releasedAny = false
                     for prompt in newPending where prompt.hookGone && !previouslyGone.contains(prompt.id) {
-                        if self.releaseOthers(prompt.id, app: app) { releasedAny = true }
+                        self.releaseOthers(prompt.id, app: app)
                     }
-                    if releasedAny { app.onChange?() }
                     if app.debugOpenOtherOnQuestion {
                         self.openFirstOtherField(newPending, app: app)
                     }
+                    if app.debugExpandFirstQuestion, app.expandedPingID == nil,
+                       let firstQuestion = newPending.first(where: { $0.questions != nil }) {
+                        app.expandedPingID = firstQuestion.id.uuidString
+                    }
                 }
                 self.pending = newPending
+                // `changed` is the one place guaranteed to run after
+                // `pending` actually reflects the new state (opened() fires
+                // before this on a brand new request — see ApprovalDesk.receive
+                // — so a relayout triggered from there would still read the
+                // old array). The ping stack reads `pending` imperatively
+                // outside SwiftUI's own reactivity, so it needs this poke;
+                // topRows gets it for free from Observation.
+                app?.onChange?()
             }
         )
     }
@@ -91,12 +101,31 @@ final class Approvals: Feature {
         return rows + CGFloat(pending.count - 1) * 6   // VStack spacing between rows
     }
 
+    /// The ping stack's capsules and cards need the same other/setOther/
+    /// answer trio ApprovalRow gets from topRows, just addressed by prompt
+    /// instead of built inline — PingStackView draws several kinds of ping,
+    /// only one of which is an approval prompt.
+    func pingBindings(for prompt: PendingPrompt, app: AppModel) -> PingBindings {
+        PingBindings(
+            other: { [weak self] i in self?.others[prompt.id]?[i] ?? OtherAnswer() },
+            setOther: { [weak self, weak app] i, value in
+                guard let self, let app else { return }
+                self.setOtherAnswer(prompt.id, i, value, app: app)
+            },
+            answer: { [weak self, weak app] reply in
+                guard let self, let app else { return }
+                self.answer(prompt.id, reply, app: app)
+            }
+        )
+    }
+
     /// Rows capture only the id. The desk decides whether that prompt can
     /// still be answered, so a click on a row that's about to go is a no-op.
     private func answer(_ id: UUID, _ reply: DecideReply, app: AppModel?) {
         guard let prompt = desk?.answer(id, reply), let app else { return }
         releaseOthers(id, app: app)
         app.endPrompt(prompt.key)
+        if app.expandedPingID == id.uuidString { app.expandedPingID = nil }
     }
 
     /// Opening or closing a field changes the card's height, so this is
@@ -147,11 +176,13 @@ final class Approvals: Feature {
             setOtherAnswer(prompt.id, 0, field, app: app)
         }
     }
+}
 
-    private static func reason(for prompt: PendingPrompt) -> String {
-        if let header = prompt.questions?.first?.header {
-            return "has a question: \(header)"
-        }
-        return "needs approval: \(prompt.summary)"
-    }
+/// What a ping capsule or card needs to answer its prompt, addressed by
+/// question index for `other`/`setOther`. Mirrors the closures topRows
+/// builds inline for ApprovalRow.
+struct PingBindings {
+    let other: (Int) -> OtherAnswer
+    let setOther: (Int, OtherAnswer) -> Void
+    let answer: (DecideReply) -> Void
 }

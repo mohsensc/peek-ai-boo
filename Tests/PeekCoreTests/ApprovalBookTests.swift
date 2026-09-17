@@ -222,6 +222,40 @@ private func open(_ book: inout ApprovalBook, _ e: Event) throws -> PendingPromp
         #expect(book.take(UUID()) == nil)
     }
 
+    // MARK: answering from a ping capsule
+    //
+    // The capsule's Deny/Allow buttons and the full panel's ApprovalRow call
+    // the exact same take()-then-reply path (see Approvals.pingBindings and
+    // Approvals.answer), so this is the same guarantee framed from that
+    // caller: a capsule can answer its prompt, but never twice, and never
+    // once something else has already resolved it.
+
+    @Test func capsuleAnswersOnceThenIsInert() throws {
+        var book = ApprovalBook()
+        let p = try open(&book, request(102))
+        #expect(book.take(p.id) == p)            // Allow/Deny tapped once
+        #expect(book.take(p.id) == nil)           // a second tap does nothing
+        #expect(book.take(p.id) == nil)           // nor a third
+    }
+
+    @Test func capsuleCannotAnswerAfterTheTerminalResolvesItFirst() throws {
+        var book = ApprovalBook()
+        let p = try open(&book, request(102))
+        // The terminal answered (matching PostToolUse) before the capsule's
+        // own buttons were tapped.
+        #expect(book.apply(event("PostToolUse", 150, tool: "Bash", input: npmTest)) == [p])
+        #expect(book.take(p.id) == nil)
+    }
+
+    @Test func capsuleCannotAnswerOnceItsHookIsGone() throws {
+        var book = ApprovalBook()
+        let p = try open(&book, request(102))
+        book.hookGone(p.id)
+        // The row still shows ("answer in terminal"), but tapping it can't
+        // reach a hook that already exited.
+        #expect(book.take(p.id) == nil)
+    }
+
     @Test func hookGoneKeepsThePromptButRefusesTake() throws {
         var book = ApprovalBook()
         let p = try open(&book, request(102))

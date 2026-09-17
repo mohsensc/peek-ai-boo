@@ -51,6 +51,21 @@ private struct GlassCapsuleSurface: ViewModifier {
     }
 }
 
+private struct GlassCircleSurface: ViewModifier {
+    var tinted = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *), !reduceTransparency {
+            content.glassEffect(tinted ? .regular.tint(.accentColor) : .regular, in: .circle)
+        } else {
+            content.background(
+                Circle().fill(tinted ? AnyShapeStyle(Color.accentColor.opacity(0.85)) : AnyShapeStyle(.regularMaterial))
+            )
+        }
+    }
+}
+
 extension View {
     /// The panel and its cards: regular Liquid Glass on macOS 26, a plain
     /// system material everywhere else. `concentric` asks for the panel's
@@ -63,6 +78,12 @@ extension View {
     /// capsule-shaped.
     func glassCapsule(tinted: Bool = false) -> some View {
         modifier(GlassCapsuleSurface(tinted: tinted))
+    }
+
+    /// The small round icon buttons on a ping capsule (terminal, deny,
+    /// allow): same material, circle-shaped.
+    func glassCircle(tinted: Bool = false) -> some View {
+        modifier(GlassCircleSurface(tinted: tinted))
     }
 }
 
@@ -105,5 +126,42 @@ struct GlassButton<Label: View>: View {
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+/// The terminal/deny/allow buttons on a ping capsule: one SF Symbol in a
+/// small circular glass button. Same macOS-26-or-fallback split as
+/// GlassButton, just circular and icon-only.
+struct GlassIconButton: View {
+    var systemName: String
+    var tinted = false
+    var help: String?
+    var action: () -> Void
+
+    var body: some View {
+        Group {
+            if #available(macOS 26, *), tinted {
+                Button(action: action) { icon }
+                    .buttonStyle(.glassProminent)
+            } else if #available(macOS 26, *) {
+                Button(action: action) { icon }
+                    .buttonStyle(.glass)
+            } else {
+                Button(action: action) {
+                    icon
+                        .foregroundStyle(tinted ? Color.white : Color.primary)
+                        .frame(width: 24, height: 24)
+                        .glassCircle(tinted: tinted)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .help(help ?? "")
+    }
+
+    private var icon: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 11, weight: .semibold))
+            .frame(width: 24, height: 24)
     }
 }

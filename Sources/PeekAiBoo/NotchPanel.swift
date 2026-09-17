@@ -4,21 +4,25 @@ import SwiftUI
 
 /// Borderless, nonactivating, floats above the menu bar (`.statusBar` beats
 /// the menu bar's own level). Fused to the notch: pure black, no material,
-/// sized to exactly the pill. It owns the glass panel that drops below it
-/// when open, so the gap between them is real desktop with no window in
-/// it — clicks there just fall through.
+/// sized to exactly the pill — it never resizes, not even for a ping. It
+/// owns the two things that drop below it: the persistent ping stack, and
+/// (once clicked) the full glass panel. Only one of those is ever visible at
+/// once, so the gap between whichever is showing and the pill is always
+/// real desktop with no window in it — clicks there just fall through.
 final class NotchPanel: NSPanel {
     private let app: AppModel
     private let geometry: NotchGeometry
     private let glass: GlassPanel
+    private let pingStack: PingStackPanel
     private var outsideClickMonitor: Any?
 
     init(app: AppModel) {
         self.app = app
         self.geometry = NotchGeometry.current()
         self.glass = GlassPanel(app: app, geometry: geometry)
+        self.pingStack = PingStackPanel(app: app, geometry: geometry)
         super.init(
-            contentRect: NotchPanel.frame(for: .idleClosed, geometry: geometry),
+            contentRect: NotchPanel.frame(geometry: geometry),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -52,9 +56,16 @@ final class NotchPanel: NSPanel {
     }
 
     private func relayout() {
-        let pillState: LayoutState = app.ping != nil ? .pinging : .idleClosed
-        setFrame(NotchPanel.frame(for: pillState, geometry: geometry), display: true)
+        setFrame(NotchPanel.frame(geometry: geometry), display: true)
         glass.relayout(open: app.isOpen, pillFrame: frame)
+        // Hidden while the panel is open — that's the same slot below the
+        // pill, and the panel already shows every pending prompt itself.
+        pingStack.relayout(show: !app.isOpen, pillFrame: frame)
+        if DebugCapture.printGeometry {
+            DebugCapture.printFrame("PILL", self)
+            DebugCapture.printFrame("PANEL", glass)
+            DebugCapture.printFrame("PINGS", pingStack)
+        }
     }
 
     private func installOutsideClickMonitor() {
@@ -67,15 +78,8 @@ final class NotchPanel: NSPanel {
         }
     }
 
-    enum LayoutState {
-        case idleClosed
-        case pinging
-    }
-
-    static func frame(for state: LayoutState, geometry: NotchGeometry) -> NSRect {
-        let width: CGFloat = state == .pinging
-            ? max(geometry.notch.width + 260, 300)
-            : geometry.notch.width + 220
+    static func frame(geometry: NotchGeometry) -> NSRect {
+        let width = geometry.notch.width + 220
         let height: CGFloat = 36
         return NSRect(
             x: geometry.notch.midX - width / 2,
@@ -121,7 +125,7 @@ final class GlassPanel: NSPanel {
         hosting.autoresizingMask = [.width, .height]
         contentView = hosting
 
-        app.onEditingChanged = { [weak self] editing in self?.setEditingText(editing) }
+        app.onPanelEditingChanged = { [weak self] editing in self?.setEditingText(editing) }
     }
 
     override var canBecomeKey: Bool { isEditingText }
@@ -159,6 +163,121 @@ final class GlassPanel: NSPanel {
     }
 }
 
+/// The stack of persistent ping capsules that springs down from the pill —
+/// one small gap below it, centered under the notch. One window (not one
+/// per capsule) so a capsule morphing into its card can sample and morph
+/// within a single GlassEffectContainer (see GlassCompat.GlassGroup); a
+/// MultiRegionHostingView gives each row its own hit-test rect instead of
+/// treating the whole window as one shape, so the gaps between capsules —
+/// and anything below the last one — stay real desktop.
+final class PingStackPanel: NSPanel {
+    static let width: CGFloat = 340
+    static let gap: CGFloat = 6   // pill -> first capsule
+
+    private let app: AppModel
+    private let geometry: NotchGeometry
+    private let hosting: MultiRegionHostingView<PingStackView>
+    private var isEditingText = false
+
+    init(app: AppModel, geometry: NotchGeometry) {
+        self.app = app
+        self.geometry = geometry
+        hosting = MultiRegionHostingView(rootView: PingStackView(app: app))
+        super.init(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        isFloatingPanel = true
+        level = .statusBar
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        hidesOnDeactivate = false
+
+        hosting.sizingOptions = []
+        hosting.autoresizingMask = [.width, .height]
+        contentView = hosting
+
+        app.onPingEditingChanged = { [weak self] editing in self?.setEditingText(editing) }
+    }
+
+    override var canBecomeKey: Bool { isEditingText }
+    override var canBecomeMain: Bool { false }
+
+    private func setEditingText(_ editing: Bool) {
+        if editing {
+            isEditingText = true
+            makeKey()
+        } else {
+            makeFirstResponder(nil)
+            isEditingText = false
+            resignKey()
+        }
+    }
+
+    /// `show` is false while the full panel is open, or once there's
+    /// nothing pending — ordered out rather than resized to zero, same
+    /// reasoning as GlassPanel.
+    func relayout(show: Bool, pillFrame: NSRect) {
+        guard show, !app.pings.isEmpty else {
+            orderOut(nil)
+            return
+        }
+        let items = app.pings.map { PingStackLayout.Item(id: $0.id, ts: $0.ts) }
+        let screenHeight = NotchGeometry.builtIn().visibleFrame.height
+        let heights = Dictionary(uniqueKeysWithValues: app.pings.map {
+            ($0.id, PingRowMetrics.height(for: $0, app: app, screenHeight: screenHeight))
+        })
+        let result = PingStackLayout.layout(items, heights: heights)
+        let originX = geometry.notch.midX - Self.width / 2
+        let originY = pillFrame.minY - Self.gap - result.totalHeight
+        setFrame(NSRect(x: originX, y: originY, width: Self.width, height: result.totalHeight), display: true)
+
+        // PingStackLayout measures y top-down (row 0 at the top, like the
+        // VStack SwiftUI draws), but this view keeps AppKit's normal
+        // bottom-left bounds, so each row flips against the total height.
+        hosting.regions = result.rows.map { row in
+            let radius = row.id == app.expandedPingID ? PingCardView.cornerRadius : row.height / 2
+            let y = result.totalHeight - row.y - row.height
+            return .init(rect: NSRect(x: 0, y: y, width: Self.width, height: row.height), cornerRadius: radius)
+        }
+        orderFrontRegardless()
+        if DebugCapture.printGeometry { printHitTestReport() }
+    }
+
+    /// `--print-geometry` only: hitTest at each region's center (a click
+    /// there must reach the capsule) and at the midpoint of each gap plus
+    /// just above the top row (a click there must fall through to the
+    /// desktop). Exercises the actual AppKit hitTest chain — the same one a
+    /// real click goes through — rather than re-deriving the geometry by
+    /// hand and asserting against itself.
+    private func printHitTestReport() {
+        let regions = hosting.regions
+        for (i, region) in regions.enumerated() {
+            let hit = hosting.hitTest(NSPoint(x: region.rect.midX, y: region.rect.midY)) != nil
+            print("HITTEST row\(i) \(hit ? "hit" : "MISS")")
+        }
+        // regions[i] sits above regions[i+1] on screen (result.rows is
+        // top-down), which in AppKit's bottom-up frame means regions[i] has
+        // the *higher* minY: the real gap is between that row's bottom edge
+        // and the next row's top edge.
+        for i in 0..<max(0, regions.count - 1) {
+            let gapY = (regions[i].rect.minY + regions[i + 1].rect.maxY) / 2
+            let hit = hosting.hitTest(NSPoint(x: regions[i].rect.midX, y: gapY)) != nil
+            print("HITTEST gap\(i) \(hit ? "HIT (should fall through)" : "miss")")
+        }
+        if let first = regions.first {
+            let above = NSPoint(x: first.rect.midX, y: first.rect.maxY + 20)
+            let hit = hosting.hitTest(above) != nil
+            print("HITTEST above-stack \(hit ? "HIT (should fall through)" : "miss")")
+        }
+        fflush(stdout)
+    }
+}
+
 /// SwiftUI's gestures expect the usual key-window responder chain. A
 /// nonactivating panel never gets that, so mouseDown is nudged along here —
 /// except into a text field, which needs to keep its own first responder so
@@ -173,7 +292,9 @@ final class ClickCatchingHostingView<Content: View>: NSHostingView<Content> {
     var cornerRadius: CGFloat = 0
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard containsRounded(point) else { return nil }
+        guard bounds.contains(point), pointInRoundedRect(point, rect: bounds, cornerRadius: cornerRadius) else {
+            return nil
+        }
         return super.hitTest(point)
     }
 
@@ -186,18 +307,55 @@ final class ClickCatchingHostingView<Content: View>: NSHostingView<Content> {
     }
 
     override var acceptsFirstResponder: Bool { true }
+}
 
-    private func containsRounded(_ point: NSPoint) -> Bool {
-        guard bounds.contains(point) else { return false }
-        let r = cornerRadius
-        guard r > 0 else { return true }
-        let inCornerBand = (point.x < bounds.minX + r || point.x > bounds.maxX - r)
-            && (point.y < bounds.minY + r || point.y > bounds.maxY - r)
-        guard inCornerBand else { return true }
-        let corner = NSPoint(
-            x: point.x < bounds.midX ? bounds.minX + r : bounds.maxX - r,
-            y: point.y < bounds.midY ? bounds.minY + r : bounds.maxY - r
-        )
-        return hypot(point.x - corner.x, point.y - corner.y) <= r
+/// Same idea as ClickCatchingHostingView, but for a window drawing several
+/// independent rounded shapes stacked with gaps (the ping stack) instead of
+/// one shape filling the whole window: a click only lands if it's inside
+/// one of `regions`, so the gaps between capsules fall through to the
+/// desktop same as the space around them. Plain (unflipped) AppKit bounds,
+/// same as every other view here — callers convert top-down row geometry
+/// against the window's total height before handing it in.
+final class MultiRegionHostingView<Content: View>: NSHostingView<Content> {
+    struct Region {
+        let rect: NSRect
+        let cornerRadius: CGFloat
     }
+
+    var regions: [Region] = []
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard regions.contains(where: { pointInRoundedRect(point, rect: $0.rect, cornerRadius: $0.cornerRadius) }) else {
+            return nil
+        }
+        return super.hitTest(point)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let hit = hitTest(convert(event.locationInWindow, from: nil))
+        if !(hit is NSTextView) && !(hit is NSTextField) {
+            window?.makeFirstResponder(self)
+        }
+        super.mouseDown(with: event)
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+}
+
+/// A borderless window is still a rectangle to the window server; both
+/// hosting views above use this to narrow hit-testing to the rounded shape
+/// actually drawn, so a corner (or, for the ping stack, a gap between rows)
+/// doesn't swallow a click meant for the desktop behind it.
+private func pointInRoundedRect(_ point: NSPoint, rect: NSRect, cornerRadius: CGFloat) -> Bool {
+    guard rect.contains(point) else { return false }
+    let r = cornerRadius
+    guard r > 0 else { return true }
+    let inCornerBand = (point.x < rect.minX + r || point.x > rect.maxX - r)
+        && (point.y < rect.minY + r || point.y > rect.maxY - r)
+    guard inCornerBand else { return true }
+    let corner = NSPoint(
+        x: point.x < rect.midX ? rect.minX + r : rect.maxX - r,
+        y: point.y < rect.midY ? rect.minY + r : rect.maxY - r
+    )
+    return hypot(point.x - corner.x, point.y - corner.y) <= r
 }

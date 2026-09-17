@@ -42,6 +42,7 @@ final class Sounds: NSObject, Feature {
         }
         window?.level = raised ? .floating : .normal
         window?.makeKeyAndOrderFront(nil)
+        if let window { DebugCapture.printFrame("SETTINGS", window) }
         return window
     }
 }

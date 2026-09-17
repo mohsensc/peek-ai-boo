@@ -78,7 +78,6 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
         let effects = store.apply(ev("Notification", ts: 3, hook: hook))
         #expect(session(store).state == .needsYou)
         #expect(effects.contains(.chirp(key, .needsYou)))
-        #expect(effects.contains(.ping(key, "sync · needs you")))
     }
 
     @Test func otherNotificationsChangeNothing() {
@@ -99,7 +98,6 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
         #expect(s.state == .done)
         #expect(s.tool == nil)
         #expect(effects.contains(.chirp(key, .done)))
-        #expect(effects.contains(.ping(key, "sync · done")))
     }
 
     @Test func interruptIsDone() {
@@ -130,21 +128,21 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
         #expect(effects == [.removed(key)])
     }
 
-    @Test func beginPromptEntersNeedsYouWithReasonText() {
+    @Test func beginPromptEntersNeedsYou() {
         var store = SessionStore()
         _ = store.apply(ev("SessionStart", ts: 1))
         _ = store.apply(ev("PreToolUse", ts: 2, tool: "Bash"))
-        let effects = store.beginPrompt(key, reason: "needs approval: Bash npm test", ts: 3)
+        let effects = store.beginPrompt(key)
         #expect(session(store).state == .needsYou)
-        #expect(effects.contains(.ping(key, "sync · needs approval: Bash npm test")))
+        #expect(effects.contains(.chirp(key, .needsYou)))
     }
 
     @Test func endPromptDropsToWorkingWhenNothingPending() {
         var store = SessionStore()
         _ = store.apply(ev("SessionStart", ts: 1))
         _ = store.apply(ev("PreToolUse", ts: 2, tool: "Bash"))
-        _ = store.beginPrompt(key, reason: "needs approval: Bash npm test", ts: 3)
-        _ = store.endPrompt(key, ts: 4)
+        _ = store.beginPrompt(key)
+        _ = store.endPrompt(key)
         let s = session(store)
         #expect(s.state == .working)
         #expect(s.pendingPrompts == 0)
@@ -157,16 +155,16 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
         var store = SessionStore()
         _ = store.apply(ev("SessionStart", ts: 1))
         _ = store.apply(ev("PreToolUse", ts: 2, tool: "Bash"))
-        _ = store.beginPrompt(key, reason: "needs approval: Bash npm test", ts: 3)
+        _ = store.beginPrompt(key)
         _ = store.apply(ev("Stop", ts: 4))
-        _ = store.endPrompt(key, ts: 5)
+        _ = store.endPrompt(key)
         #expect(session(store).state == .done)
     }
 
     @Test func endPromptNeverGoesBelowZero() {
         var store = SessionStore()
         _ = store.apply(ev("SessionStart", ts: 1))
-        _ = store.endPrompt(key, ts: 2)
+        _ = store.endPrompt(key)
         #expect(session(store).pendingPrompts == 0)
     }
 
@@ -249,6 +247,51 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
             }
         }
         #expect(store.sessions[sessKey] == nil)   // SessionEnd removed it
+    }
+
+    // MARK: info pings
+
+    @Test func doneAndUnseenIsAnInfoPingUntilClicked() {
+        var store = SessionStore()
+        _ = store.apply(ev("SessionStart", ts: 1))
+        _ = store.apply(ev("Stop", ts: 2))
+        #expect(store.infoPings.map(\.id) == [key])
+
+        // No timer involved: it just sits there, however long that takes.
+        _ = store.apply(Event(client: .claude, event: "SessionStart", agent: "sess-2", ts: 999_999))
+        #expect(store.infoPings.map(\.id) == [key])
+
+        store.markSeen(key)
+        #expect(store.infoPings.isEmpty)
+    }
+
+    @Test func workingOrIdleSessionsAreNeverInfoPings() {
+        var store = SessionStore()
+        _ = store.apply(ev("SessionStart", ts: 1))
+        #expect(store.infoPings.isEmpty)
+        _ = store.apply(ev("UserPromptSubmit", ts: 2))
+        #expect(store.infoPings.isEmpty)
+    }
+
+    @Test func seenDoneIsNotAnInfoPing() {
+        // Stop from a session that was already marked seen (e.g. its ghost
+        // was watched to completion) shouldn't newly need acknowledgement --
+        // foldShownState only flips seen=false on entering needsYou/done.
+        var store = SessionStore()
+        _ = store.apply(ev("SessionStart", ts: 1))
+        _ = store.apply(ev("Stop", ts: 2))
+        store.markSeen(key)
+        _ = store.apply(Event(client: .claude, event: "SessionStart", agent: "sess-2", ts: 3))
+        #expect(store.infoPings.isEmpty)
+    }
+
+    @Test func infoPingsAreOldestEventFirst() {
+        var store = SessionStore()
+        _ = store.apply(Event(client: .claude, event: "SessionStart", agent: "later", ts: 1))
+        _ = store.apply(Event(client: .claude, event: "SessionStart", agent: "earlier", ts: 1))
+        _ = store.apply(Event(client: .claude, event: "Stop", agent: "later", ts: 20))
+        _ = store.apply(Event(client: .claude, event: "Stop", agent: "earlier", ts: 10))
+        #expect(store.infoPings.map(\.id.agent) == ["earlier", "later"])
     }
 
     private var key: SessionKey { SessionKey(client: .claude, agent: "sess-1") }

@@ -54,7 +54,6 @@ public struct Session: Sendable, Equatable, Identifiable {
 
 public enum Effect: Sendable, Equatable {
     case chirp(SessionKey, SessionState)
-    case ping(SessionKey, String)
     case watchPID(SessionKey, Int32)
     case removed(SessionKey)
 }
@@ -78,6 +77,16 @@ public struct SessionStore: Sendable, Equatable {
 
     public var waitingCount: Int {
         sessions.values.filter { $0.state == .needsYou }.count
+    }
+
+    /// Unseen "done" sessions, each worth one info ping capsule under the
+    /// pill, oldest event first. No timer behind this — it's the same
+    /// state/seen bookkeeping `ordered` already reads, so a session stays
+    /// here until `markSeen` runs, however long that takes.
+    public var infoPings: [Session] {
+        sessions.values
+            .filter { $0.state == .done && !$0.seen }
+            .sorted { $0.lastEvent < $1.lastEvent }
     }
 
     public mutating func apply(_ e: Event) -> [Effect] {
@@ -145,19 +154,21 @@ public struct SessionStore: Sendable, Equatable {
         }
 
         sessions[key] = s
-        effects.append(contentsOf: foldShownState(key, ts: e.ts, promptReason: nil))
+        effects.append(contentsOf: foldShownState(key))
         return effects
     }
 
-    /// reason goes after "<project> · ", e.g. "needs approval: Bash npm test".
-    public mutating func beginPrompt(_ key: SessionKey, reason: String, ts: Int64) -> [Effect] {
+    /// No `ts` parameter: pendingPrompts is desk-driven bookkeeping, not a
+    /// session event, so it doesn't move `lastEvent` (that would bump a
+    /// session in `ordered` just because a prompt opened or closed).
+    public mutating func beginPrompt(_ key: SessionKey) -> [Effect] {
         guard var s = sessions[key] else { return [] }
         s.pendingPrompts += 1
         sessions[key] = s
-        return foldShownState(key, ts: ts, promptReason: reason)
+        return foldShownState(key)
     }
 
-    public mutating func endPrompt(_ key: SessionKey, ts: Int64) -> [Effect] {
+    public mutating func endPrompt(_ key: SessionKey) -> [Effect] {
         guard var s = sessions[key] else { return [] }
         s.pendingPrompts = max(0, s.pendingPrompts - 1)
         s.permissionNotified = false
@@ -168,7 +179,7 @@ public struct SessionStore: Sendable, Equatable {
             s.baseState = .working
         }
         sessions[key] = s
-        return foldShownState(key, ts: ts, promptReason: nil)
+        return foldShownState(key)
     }
 
     public mutating func markSeen(_ key: SessionKey) {
@@ -196,8 +207,10 @@ public struct SessionStore: Sendable, Equatable {
     }
 
     /// Recomputes the shown state from pendingPrompts/permissionNotified and
-    /// emits chirp+ping only when it newly enters needsYou or done.
-    private mutating func foldShownState(_ key: SessionKey, ts: Int64, promptReason: String?) -> [Effect] {
+    /// emits a chirp only when it newly enters needsYou or done. Whether to
+    /// show a ping capsule for that is derived state, not an effect here —
+    /// see Approvals.pending and SessionStore.infoPings.
+    private mutating func foldShownState(_ key: SessionKey) -> [Effect] {
         guard var s = sessions[key] else { return [] }
         let newShown: SessionState = (s.pendingPrompts > 0 || s.permissionNotified) ? .needsYou : s.baseState
         defer { sessions[key] = s }
@@ -207,15 +220,6 @@ public struct SessionStore: Sendable, Equatable {
         if newShown == .needsYou || newShown == .done {
             s.seen = false
             effects.append(.chirp(key, newShown))
-            let text: String
-            if newShown == .done {
-                text = "\(s.project) · done"
-            } else if let promptReason {
-                text = "\(s.project) · \(promptReason)"
-            } else {
-                text = "\(s.project) · needs you"
-            }
-            effects.append(.ping(key, text))
         }
         s.state = newShown
         return effects
