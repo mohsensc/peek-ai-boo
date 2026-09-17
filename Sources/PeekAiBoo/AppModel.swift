@@ -100,11 +100,21 @@ final class AppModel {
 
     private var stillCheckGeneration = 0
     private var exitWatchers: [SessionKey: DispatchSourceProcess] = [:]
+    private var pruneTimer: DispatchSourceTimer?
+
+    /// The per-pid `watch(pid:)` below (kqueue NOTE_EXIT via
+    /// DispatchSourceProcess) is what normally notices a dead agent, but it
+    /// only arms once some event has actually carried that pid -- a process
+    /// that died in the gap before its first watch installed would leave a
+    /// ghost behind forever. This is the safety net: a cheap `kill(pid, 0)`
+    /// sweep, occasionally, not a hot poll.
+    static let pruneInterval: TimeInterval = 30
 
     init(paths: Paths, home: String) {
         self.paths = paths
         self.home = home
         self.muted = UserDefaults.standard.bool(forKey: "muted")
+        startPruneTimer()
     }
 
     /// Approval/question prompts plus unseen-done sessions, oldest first —
@@ -256,5 +266,21 @@ final class AppModel {
         }
         source.resume()
         exitWatchers[key] = source
+    }
+
+    private func startPruneTimer() {
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + Self.pruneInterval, repeating: Self.pruneInterval)
+        timer.setEventHandler { [weak self] in self?.pruneDeadSessions() }
+        timer.resume()
+        pruneTimer = timer
+    }
+
+    private func pruneDeadSessions() {
+        let now = nowMs()
+        for session in store.sessions.values {
+            guard let pid = session.term.pid, !processIsAlive(pid) else { continue }
+            ingest(.sessionEnd(session.id, ts: now))
+        }
     }
 }
