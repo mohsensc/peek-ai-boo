@@ -213,17 +213,17 @@ struct ApprovalPingCapsule: View {
 
     var body: some View {
         PingRowShell(client: entry.key.client, pose: pose) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 PingKindLabel(project: project, kind: "needs approval")
                 Spacer(minLength: 4)
-                GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 20) {
+                GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 18) {
                     PingActions.jump(entry.key, app)
                 }
                 if prompt.hookGone {
                     Text("terminal").font(.system(size: 9)).foregroundStyle(.secondary)
                 } else {
-                    GlassIconButton(systemName: "xmark", help: "Deny", size: 20) { bindings.answer(.deny(message: nil)) }
-                    GlassIconButton(systemName: "checkmark", tinted: true, help: "Allow", size: 20) { bindings.answer(.allow) }
+                    GlassIconButton(systemName: "xmark", help: "Deny", size: 18) { bindings.answer(.deny(message: nil)) }
+                    GlassIconButton(systemName: "checkmark", tinted: true, help: "Allow", size: 18) { bindings.answer(.allow) }
                 }
             }
         } row2: {
@@ -264,10 +264,10 @@ struct QuestionPingCapsule: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             PingRowShell(client: entry.key.client, pose: pose) {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     PingKindLabel(project: project, kind: "asks")
                     Spacer(minLength: 4)
-                    GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 20) {
+                    GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 18) {
                         PingActions.jump(entry.key, app)
                     }
                 }
@@ -515,10 +515,10 @@ struct InfoPingCapsule: View {
 
     var body: some View {
         PingRowShell(client: entry.key.client, pose: session.pose) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 PingKindLabel(project: session.project, kind: "done")
                 Spacer(minLength: 4)
-                GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 20) {
+                GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 18) {
                     PingActions.jump(entry.key, app)
                 }
             }
