@@ -226,7 +226,7 @@ final class PingStackPanel: NSPanel {
             orderOut(nil)
             return
         }
-        let items = app.pings.map { PingStackLayout.Item(id: $0.id, ts: $0.ts) }
+        let items = app.pings.map { PingStackLayout.Item(id: $0.id, ts: $0.ts, isDone: $0.isDone) }
         let screenHeight = NotchGeometry.builtIn().visibleFrame.height
         let heights = Dictionary(uniqueKeysWithValues: app.pings.map {
             ($0.id, PingRowMetrics.height(for: $0, app: app, screenHeight: screenHeight))
@@ -248,7 +248,7 @@ final class PingStackPanel: NSPanel {
             let radius: CGFloat
             if row.id == app.expandedPingID {
                 radius = PingCardView.cornerRadius
-            } else if row.id == PingStackLayout.overflowID {
+            } else if row.id == PingStackLayout.overflowID || row.isDone {
                 radius = row.height / 2
             } else {
                 radius = PingStackLayout.collapsedCornerRadius

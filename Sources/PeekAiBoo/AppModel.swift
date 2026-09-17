@@ -17,6 +17,14 @@ struct PingEntry: Identifiable, Equatable {
     let kind: PingKind
 
     static func == (lhs: PingEntry, rhs: PingEntry) -> Bool { lhs.id == rhs.id }
+
+    /// A done ping: never counts toward "+N more", never bumps an approval
+    /// or question out of view, and fades on its own — see
+    /// PingStackLayout.selectShown/doneVisible.
+    var isDone: Bool {
+        if case .info = kind { return true }
+        return false
+    }
 }
 
 /// The app's one piece of mutable state. SessionStore does the state-machine
@@ -99,23 +107,22 @@ final class AppModel {
         self.muted = UserDefaults.standard.bool(forKey: "muted")
     }
 
-    /// Approval/question prompts plus unseen-done sessions, oldest first.
-    /// PingStackPanel caps this at 3 visible plus a "+N more" capsule.
+    /// Approval/question prompts plus unseen-done sessions, oldest first —
+    /// minus any done ping past its fade window (PingStackLayout.
+    /// doneVisible). PingStackPanel caps this at 3 visible plus a "+N more"
+    /// capsule, and never lets a done ping count toward that cap or bump a
+    /// blocking one out (PingStackLayout.selectShown).
     var pings: [PingEntry] {
+        let now = nowMs()
         var items: [PingEntry] = (approvals?.pending ?? []).map {
             PingEntry(id: $0.id.uuidString, ts: $0.ts, key: $0.key, kind: .approval($0))
         }
-        items += store.infoPings.map {
-            PingEntry(id: "done:\($0.id.client.rawValue):\($0.id.agent)", ts: $0.lastEvent, key: $0.id, kind: .info($0))
-        }
+        items += store.infoPings
+            .filter { PingStackLayout.doneVisible(ts: $0.lastEvent, nowMs: now) }
+            .map {
+                PingEntry(id: "done:\($0.id.client.rawValue):\($0.id.agent)", ts: $0.lastEvent, key: $0.id, kind: .info($0))
+            }
         return items.sorted { $0.ts < $1.ts }
-    }
-
-    /// The info ping's own click: acknowledge and dismiss, same as opening
-    /// the island would, but for just this one session.
-    func dismissInfoPing(_ key: SessionKey) {
-        store.markSeen(key)
-        onChange?()
     }
 
     func ingest(_ event: Event) {
@@ -125,6 +132,7 @@ final class AppModel {
             feature.observe(event, app: self)
         }
         scheduleStillCheck()
+        schedulePingFadeCheck()
         onChange?()
     }
 
@@ -212,6 +220,30 @@ final class AppModel {
         DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds) { [weak self] in
             guard let self, self.stillCheckGeneration == generation else { return }
             self.stillTick += 1
+        }
+    }
+
+    private var pingFadeGeneration = 0
+
+    /// One asyncAfter for the soonest done ping that's about to fall out of
+    /// `pings` on its own — same one-shot-wakeup shape as scheduleStillCheck,
+    /// just for PingStackLayout.doneVisible instead of ghost movement.
+    /// stillTick's write both forces PingStackView to re-run `pings` (a pure
+    /// function of wall-clock time Observation can't otherwise see) and, via
+    /// onChange, gets PingStackPanel to actually shrink the window.
+    private func schedulePingFadeCheck() {
+        let now = nowMs()
+        let deadlines = store.infoPings
+            .map { $0.lastEvent + PingStackLayout.doneFadeMs }
+            .filter { $0 > now }
+        guard let at = deadlines.min() else { return }
+        pingFadeGeneration += 1
+        let generation = pingFadeGeneration
+        let delaySeconds = max(0, Double(at - now)) / 1000
+        DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds) { [weak self] in
+            guard let self, self.pingFadeGeneration == generation else { return }
+            self.stillTick += 1
+            self.onChange?()
         }
     }
 

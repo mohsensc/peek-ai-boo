@@ -105,6 +105,12 @@ struct PingStackView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        // A done ping's visibility is a pure function of wall-clock time
+        // (PingStackLayout.doneVisible), which Observation can't track on
+        // its own — stillTick's write at the fade deadline (AppModel.
+        // schedulePingFadeCheck) is what forces this body to re-run and
+        // drop it from `shown`.
+        let _ = app.stillTick
         GlassGroup {
             VStack(spacing: PingStackLayout.gap) {
                 ForEach(shown) { entry in
@@ -121,8 +127,18 @@ struct PingStackView: View {
         }
     }
 
-    private var shown: [PingEntry] { Array(app.pings.prefix(PingStackLayout.visibleLimit)) }
-    private var overflow: Int { max(0, app.pings.count - shown.count) }
+    /// Same selection PingStackPanel.relayout uses, so SwiftUI never draws
+    /// a different set of rows than AppKit sized a window for.
+    private var selection: PingStackLayout.Selection {
+        PingStackLayout.selectShown(app.pings.map {
+            PingStackLayout.Item(id: $0.id, ts: $0.ts, isDone: $0.isDone)
+        })
+    }
+    private var shown: [PingEntry] {
+        let byID = Dictionary(uniqueKeysWithValues: app.pings.map { ($0.id, $0) })
+        return selection.shown.compactMap { byID[$0.id] }
+    }
+    private var overflow: Int { selection.overflow }
     private var screenHeight: CGFloat { NotchGeometry.builtIn().visibleFrame.height }
 
     @ViewBuilder
@@ -144,30 +160,6 @@ struct PingStackView: View {
             } else {
                 ApprovalPingCapsule(entry: entry, prompt: prompt, app: app)
             }
-        }
-    }
-}
-
-/// A row's project name plus a short kind word ("needs approval", "asks",
-/// "done") — row 1's leading text, before whatever buttons that kind gets.
-/// Still used by QuestionPingCapsule/InfoPingCapsule; ApprovalPingCapsule
-/// has moved to PingRowOne below, which fixes the truncation order — see
-/// its doc comment.
-private struct PingKindLabel: View {
-    let project: String
-    let kind: String
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(project)
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(1)
-            Text(kind)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
         }
     }
 }
@@ -671,31 +663,30 @@ struct PingCardView: View {
     }
 }
 
-/// A done session waiting to be acknowledged. Any click (other than the
-/// terminal button) marks it seen and dismisses it — no answer to give,
-/// just a nudge that's been read. Row 2 is whatever note a feature left on
-/// the session (TerminalJump, so far), or plain "done" when there isn't one.
+/// A done session waiting to be acknowledged: one line, no row 2, no
+/// buttons — just the ghost and "session · done". The whole capsule is the
+/// click target and jumps to the terminal (same as a session row), which is
+/// what keeps "always be able to link to the terminal" true even with the
+/// terminal button gone. It fades on its own — PingStackLayout.doneVisible
+/// drops it from AppModel.pings once its session's `lastEvent` is old
+/// enough — rather than waiting to be clicked; a click still marks it seen
+/// (PingActions.jump -> AppModel.open -> markSeen) same as ever, it's just
+/// no longer the only way it goes away.
 struct InfoPingCapsule: View {
     let entry: PingEntry
     let session: Session
     let app: AppModel
 
     var body: some View {
-        PingRowShell(client: entry.key.client, pose: session.pose) {
-            HStack(spacing: 4) {
-                PingKindLabel(project: session.project, kind: "done")
-                Spacer(minLength: 4)
-                GlassIconButton(systemName: "apple.terminal", help: "Terminal", size: 18) {
-                    PingActions.jump(entry.key, app)
-                }
-            }
-        } row2: {
-            PingDetailLine(text: session.note ?? "done")
+        HStack(alignment: .center, spacing: 8) {
+            GhostView(client: entry.key.client, pose: session.pose, phase: nil)
+            PingRowOne(project: session.project, kind: "done") { EmptyView() }
         }
-        .frame(height: PingStackLayout.collapsedHeight)
+        .padding(.horizontal, 12)
+        .frame(height: PingStackLayout.doneHeight)
         .contentShape(Rectangle())
-        .onTapGesture { app.dismissInfoPing(entry.key) }
-        .glassSurface(cornerRadius: PingStackLayout.collapsedCornerRadius, concentric: true)
+        .onTapGesture { PingActions.jump(entry.key, app) }
+        .glassCapsule()
     }
 }
 
