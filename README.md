@@ -1,3 +1,5 @@
+https://github.com/user-attachments/assets/1a0ab858-1d41-4dad-8fba-34ee40b67b1a
+
 # peek-ai-boo
 
 A macOS notch app. Little pixel ghosts sit in the notch and track your
