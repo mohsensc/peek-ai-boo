@@ -24,6 +24,9 @@ Builds the hook and the app, drops the app in `~/Applications`, and
 registers the hook with Claude Code and (if present) Codex. In Codex, run
 `/hooks` once afterward so it trusts the new entries.
 
+Also installs a login item, so it's just there every day without you
+opening it. Pass `--no-login-item` to skip that.
+
 ## Broken
 
 - Ad-hoc signing means macOS asks for the Automation permission again on
