@@ -347,8 +347,51 @@ the signature.
 
 `install.sh`: `make -C hook`, `scripts/build-app.sh` (release, hand-made bundle
 and Info.plist, `codesign --sign -`), copy to `~/Applications`,
-`PeekAiBoo --install-hooks`, open. `--uninstall-hooks` and the app menu run
-the same Swift code.
+`PeekAiBoo --install-hooks`, load the login item, done -- RunAtLoad starts
+it, so no separate `open`. `--no-login-item` means no login item, full
+stop -- `InstallerFeature` removes one left by an earlier plain install,
+not just skips writing a new one -- and opens the app once instead.
+`--uninstall-hooks` and the app menu run the same Swift code.
+
+### Login item
+
+`~/Library/LaunchAgents/com.mohsensc.peekaiboo.plist` (label matches the
+app's `CFBundleIdentifier`), `ProgramArguments` pointing at the installed
+app, `RunAtLoad` true. `KeepAlive.SuccessfulExit` false: restart on a
+crash, but not after a deliberate Quit (`NSApp.terminate`, exit 0) or the
+single-instance check in `main.swift` finding another copy already up
+(also exit 0) -- either would otherwise get bounced right back by launchd.
+`LoginItem` (PeekCore) only ever writes or removes that file, same as the
+hook configs it sits beside; twice is once, and it's covered the same way
+in `scripts/checks/installer.sh`.
+
+Loading it live is a separate step, since that's a real launchd call and
+not something a config-file write should imply on its own:
+- Install: `install.sh` runs `launchctl bootout` (ignoring "not loaded"),
+  waits for the old process to actually exit (bounded poll on its pid --
+  `bootout` can return before the job is really gone), then `bootstrap
+  gui/$UID`, falling back to `unload -w`/`load -w` if bootstrap isn't
+  available. Bootout-first makes a reinstall quiet -- bootstrapping an
+  already-loaded label just errors -- and, combined with the wait,
+  guarantees the reinstall ends with exactly one copy running: skip the
+  wait and the fresh `RunAtLoad` copy can lose the race, find the old
+  process still holding `events.sock`, and exit 0 into a plist that's
+  loaded but running nothing (`KeepAlive.SuccessfulExit: false` won't
+  retry a clean exit).
+- Uninstall: `InstallerFeature` removes the plist and runs `launchctl
+  bootout` itself, so a stale KeepAlive registration can't outlive the
+  file that describes it. Same bootout on a reinstall with
+  `--no-login-item`, since that also means taking back the file it's
+  removing. Skipped under `PEEKABOO_SKIP_LAUNCHCTL`, which the installer
+  check sets -- `gui/$UID` is the real login session no matter what
+  `$HOME` a test points the rest of the installer at.
+
+If the app's already running (opened by hand, or a previous login) when
+the agent loads, `main.swift`'s own single-instance check is what keeps it
+to one copy -- the second process finds `events.sock` already bound and
+exits 0. That's exercised generically by `scripts/checks/app.sh` already
+(launch two copies against the same dir, second one quits clean); the
+login item doesn't need its own version of that test.
 
 Install copies the hook to `~/.peek-ai-boo/bin/`, then per config file backs
 up to `<file>.peek-ai-boo.<unix time>.bak`, removes ours and adds ours, so
