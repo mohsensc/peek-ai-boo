@@ -78,7 +78,6 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
         let effects = store.apply(ev("Notification", ts: 3, hook: hook))
         #expect(session(store).state == .needsYou)
         #expect(effects.contains(.chirp(key, .needsYou)))
-        #expect(effects.contains(.ping(key, "sync · needs you")))
     }
 
     @Test func otherNotificationsChangeNothing() {
@@ -99,7 +98,6 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
         #expect(s.state == .done)
         #expect(s.tool == nil)
         #expect(effects.contains(.chirp(key, .done)))
-        #expect(effects.contains(.ping(key, "sync · done")))
     }
 
     @Test func interruptIsDone() {
@@ -130,21 +128,21 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
         #expect(effects == [.removed(key)])
     }
 
-    @Test func beginPromptEntersNeedsYouWithReasonText() {
+    @Test func beginPromptEntersNeedsYou() {
         var store = SessionStore()
         _ = store.apply(ev("SessionStart", ts: 1))
         _ = store.apply(ev("PreToolUse", ts: 2, tool: "Bash"))
-        let effects = store.beginPrompt(key, reason: "needs approval: Bash npm test", ts: 3)
+        let effects = store.beginPrompt(key, ts: 3)
         #expect(session(store).state == .needsYou)
-        #expect(effects.contains(.ping(key, "sync · needs approval: Bash npm test")))
+        #expect(effects.contains(.chirp(key, .needsYou)))
     }
 
     @Test func endPromptDropsToWorkingWhenNothingPending() {
         var store = SessionStore()
         _ = store.apply(ev("SessionStart", ts: 1))
         _ = store.apply(ev("PreToolUse", ts: 2, tool: "Bash"))
-        _ = store.beginPrompt(key, reason: "needs approval: Bash npm test", ts: 3)
-        _ = store.endPrompt(key, ts: 4)
+        _ = store.beginPrompt(key, ts: 3)
+        _ = store.endPrompt(key)
         let s = session(store)
         #expect(s.state == .working)
         #expect(s.pendingPrompts == 0)
@@ -152,22 +150,21 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
     }
 
     @Test func endPromptAfterStopStaysDone() {
-        // A Stop can resolve the last pending prompt (the design doc's
-        // resolution rule includes Stop), and endPrompt runs after it. The
-        // session should stay done, not bounce back to working.
+        // A Stop can resolve the last pending prompt, and endPrompt runs
+        // after it. The session should stay done, not bounce back to working.
         var store = SessionStore()
         _ = store.apply(ev("SessionStart", ts: 1))
         _ = store.apply(ev("PreToolUse", ts: 2, tool: "Bash"))
-        _ = store.beginPrompt(key, reason: "needs approval: Bash npm test", ts: 3)
+        _ = store.beginPrompt(key, ts: 3)
         _ = store.apply(ev("Stop", ts: 4))
-        _ = store.endPrompt(key, ts: 5)
+        _ = store.endPrompt(key)
         #expect(session(store).state == .done)
     }
 
     @Test func endPromptNeverGoesBelowZero() {
         var store = SessionStore()
         _ = store.apply(ev("SessionStart", ts: 1))
-        _ = store.endPrompt(key, ts: 2)
+        _ = store.endPrompt(key)
         #expect(session(store).pendingPrompts == 0)
     }
 
@@ -191,14 +188,53 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
         _ = store.apply(ev("UserPromptSubmit", ts: 2000))
         #expect(session(store).isMoving(nowMs: 999_999_999) == true)   // working: always
 
+        // needsYou: moving for a short wave from the ping that caused it,
+        // then still even though it's still unseen (that's the CPU fix, not
+        // a bug — see needsYouWaveHoldsStillAfterTheWave below), and never
+        // moving at all once seen, wave or not.
         let hook = JSONValue.object(["notification_type": .string("permission_prompt")])
         _ = store.apply(ev("Notification", ts: 3000, hook: hook))
         var needsYou = session(store)
         #expect(needsYou.seen == false)
-        #expect(needsYou.isMoving(nowMs: 999_999_999) == true)   // unseen
+        #expect(needsYou.isMoving(nowMs: 3000 + 4_999) == true)    // within the wave
+        #expect(needsYou.isMoving(nowMs: 3000 + 5_001) == false)   // past it, still unseen
         store.markSeen(key)
         needsYou = session(store)
-        #expect(needsYou.isMoving(nowMs: 999_999_999) == false)  // seen
+        #expect(needsYou.isMoving(nowMs: 3000 + 1) == false)  // seen beats an active wave too
+    }
+
+    @Test func needsYouWaveHoldsStillAfterTheWave() {
+        // The wave plays for needsYouWaveMs from the ping that started it,
+        // then holds the needs-you pose on frame 0 (isMoving == false) while
+        // the ping itself stays up (still unseen) — no timer needed to get
+        // there, isMoving is just a pure function of elapsed time.
+        var store = SessionStore()
+        _ = store.apply(ev("SessionStart", ts: 0))
+        _ = store.apply(ev("PreToolUse", ts: 1, tool: "Bash"))
+        _ = store.beginPrompt(key, ts: 1_000)
+        let waiting = session(store)
+        #expect(waiting.isMoving(nowMs: 1_000) == true)
+        #expect(waiting.isMoving(nowMs: 1_000 + Session.needsYouWaveMs - 1) == true)
+        #expect(waiting.isMoving(nowMs: 1_000 + Session.needsYouWaveMs) == false)
+        #expect(waiting.isMoving(nowMs: 999_999_999) == false)
+    }
+
+    @Test func aSecondPingRestartsTheWave() {
+        // Two approvals stack on the same session: the first's wave already
+        // finished, and the second beginPrompt (a new ping) restarts it —
+        // even though the session was already needsYou the whole time, so
+        // foldShownState's own state-changed branch never fires for this one.
+        var store = SessionStore()
+        _ = store.apply(ev("SessionStart", ts: 0))
+        _ = store.apply(ev("PreToolUse", ts: 1, tool: "Bash"))
+        _ = store.beginPrompt(key, ts: 1_000)
+        #expect(session(store).isMoving(nowMs: 1_000 + Session.needsYouWaveMs) == false)
+
+        _ = store.beginPrompt(key, ts: 10_000)
+        let restarted = session(store)
+        #expect(restarted.state == .needsYou)   // no transition; still already needsYou
+        #expect(restarted.isMoving(nowMs: 10_000) == true)
+        #expect(restarted.isMoving(nowMs: 10_000 + Session.needsYouWaveMs) == false)
     }
 
     @Test func nextStillAtTracksIdleSessions() {
@@ -207,6 +243,19 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
         let expected: Int64 = 1000 + 20_000
         #expect(store.nextStillAt(nowMs: 1000) == expected)
         #expect(store.nextStillAt(nowMs: 1000 + 20_001) == nil)
+    }
+
+    @Test func nextStillAtTracksAWaitingNeedsYouSession() {
+        // This is what actually protects the CPU win: without it,
+        // AppModel never gets a wakeup at the 5s mark and the ghost keeps
+        // waving until some unrelated event happens to force a render.
+        var store = SessionStore()
+        _ = store.apply(ev("SessionStart", ts: 0))
+        _ = store.apply(ev("PreToolUse", ts: 1, tool: "Bash"))
+        _ = store.beginPrompt(key, ts: 2_000)
+        let expected: Int64 = 2_000 + Session.needsYouWaveMs
+        #expect(store.nextStillAt(nowMs: 2_000) == expected)
+        #expect(store.nextStillAt(nowMs: expected + 1) == nil)
     }
 
     @Test func orderedPutsNeedsYouFirstThenNewestFirst() {
@@ -250,6 +299,51 @@ private func ev(_ event: String, ts: Int64, cwd: String? = "/Users/m/src/sync",
             }
         }
         #expect(store.sessions[sessKey] == nil)   // SessionEnd removed it
+    }
+
+    // MARK: info pings
+
+    @Test func doneAndUnseenIsAnInfoPingUntilClicked() {
+        var store = SessionStore()
+        _ = store.apply(ev("SessionStart", ts: 1))
+        _ = store.apply(ev("Stop", ts: 2))
+        #expect(store.infoPings.map(\.id) == [key])
+
+        // No timer involved: it just sits there, however long that takes.
+        _ = store.apply(Event(client: .claude, event: "SessionStart", agent: "sess-2", ts: 999_999))
+        #expect(store.infoPings.map(\.id) == [key])
+
+        store.markSeen(key)
+        #expect(store.infoPings.isEmpty)
+    }
+
+    @Test func workingOrIdleSessionsAreNeverInfoPings() {
+        var store = SessionStore()
+        _ = store.apply(ev("SessionStart", ts: 1))
+        #expect(store.infoPings.isEmpty)
+        _ = store.apply(ev("UserPromptSubmit", ts: 2))
+        #expect(store.infoPings.isEmpty)
+    }
+
+    @Test func seenDoneIsNotAnInfoPing() {
+        // Stop from a session that was already marked seen (e.g. its ghost
+        // was watched to completion) shouldn't newly need acknowledgement --
+        // foldShownState only flips seen=false on entering needsYou/done.
+        var store = SessionStore()
+        _ = store.apply(ev("SessionStart", ts: 1))
+        _ = store.apply(ev("Stop", ts: 2))
+        store.markSeen(key)
+        _ = store.apply(Event(client: .claude, event: "SessionStart", agent: "sess-2", ts: 3))
+        #expect(store.infoPings.isEmpty)
+    }
+
+    @Test func infoPingsAreOldestEventFirst() {
+        var store = SessionStore()
+        _ = store.apply(Event(client: .claude, event: "SessionStart", agent: "later", ts: 1))
+        _ = store.apply(Event(client: .claude, event: "SessionStart", agent: "earlier", ts: 1))
+        _ = store.apply(Event(client: .claude, event: "Stop", agent: "later", ts: 20))
+        _ = store.apply(Event(client: .claude, event: "Stop", agent: "earlier", ts: 10))
+        #expect(store.infoPings.map(\.id.agent) == ["earlier", "later"])
     }
 
     private var key: SessionKey { SessionKey(client: .claude, agent: "sess-1") }

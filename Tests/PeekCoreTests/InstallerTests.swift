@@ -3,8 +3,8 @@ import Testing
 @testable import PeekCore
 
 @Suite struct InstallerTests {
-    /// Not the real CodexHooks (that's feat/codex's), just enough of a
-    /// second client to exercise "config file doesn't exist yet".
+    /// Not the real CodexHooks, just enough of a second client to exercise
+    /// "config file doesn't exist yet".
     private static let fakeCodexSpec = HookSpec(
         client: .codex, configPath: ".codex/hooks.json",
         events: [HookEvent("SessionStart", timeout: 5)])

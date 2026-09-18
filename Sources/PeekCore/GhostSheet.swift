@@ -3,7 +3,7 @@ import Foundation
 /// Parsed form of Resources/ghost.json: two 5-color palettes and, per pose,
 /// two 16x16 indexed frames plus that pose's animation rate.
 public struct GhostSheet: Sendable, Equatable {
-    public static let size = 16
+    public static let size = 13
 
     public struct RGBA: Sendable, Equatable {
         public let r, g, b, a: UInt8

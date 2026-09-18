@@ -127,8 +127,8 @@ import Darwin
     }
 }
 
-// Test-only helpers: a tiny synchronous unix-socket client, since the real
-// hook binary lives in a different PR.
+// Test-only helpers: a tiny synchronous unix-socket client, so these tests
+// don't depend on the real (C++) hook binary.
 private func connectSocket(_ fd: Int32, path: String) throws {
     var addr = sockaddr_un()
     addr.sun_family = sa_family_t(AF_UNIX)

@@ -4,7 +4,7 @@ import PeekCore
 /// Focuses the terminal behind a session on click. Claims the row only when
 /// there's actually somewhere to jump to (`plan.handles`), so a session with
 /// no reachable terminal falls through to another feature instead of always
-/// eating the click regardless of slot order.
+/// eating the click regardless of where it sits in the feature list.
 final class TerminalJump: Feature {
     func open(_ session: Session, app: AppModel) -> Bool {
         let plan = JumpPlan.make(term: session.term, cwd: session.cwd)

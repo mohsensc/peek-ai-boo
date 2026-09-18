@@ -27,8 +27,8 @@ import Testing
 
     @Test func digitsMapToTheRightPaletteColor() throws {
         let sheet = try Self.loadRealSheet()
-        // Row 1 of idle frame 0 is "......0000......": index 6 is digit '0'.
-        let idx = 1 * GhostSheet.size + 6
+        // Row 1 of idle frame 0 is ".....000.....": index 5 is digit '0'.
+        let idx = 1 * GhostSheet.size + 5
         #expect(sheet.frames[.idle]?[0][idx] == 0)
         let warm0 = try #require(sheet.palettes["warm"]?[0])
         #expect(warm0 == GhostSheet.RGBA(r: 0x5A, g: 0x2A, b: 0x1F, a: 255))
@@ -48,7 +48,8 @@ import Testing
 
     // MARK: - malformed sheets
 
-    private static let blankFrame = Array(repeating: String(repeating: ".", count: 16), count: 16)
+    private static let blankFrame = Array(
+        repeating: String(repeating: ".", count: GhostSheet.size), count: GhostSheet.size)
 
     private static func sheetJSON(
         frameOverride: [String: Any]? = nil,
@@ -71,7 +72,7 @@ import Testing
         }
         let hexes = ["#5A2A1F", "#D97757", "#BF5F42", "#2B1712", "#F6C453"]
         let obj: [String: Any] = [
-            "size": 16,
+            "size": GhostSheet.size,
             "palettes": ["warm": hexes, "cool": hexes],
             "frames": frames,
             "fps": fps,
@@ -85,7 +86,7 @@ import Testing
 
     @Test func narrowRowThrows() {
         var badFrame = Self.blankFrame
-        badFrame[0] = String(repeating: ".", count: 15)
+        badFrame[0] = String(repeating: ".", count: GhostSheet.size - 1)
         let data = Self.sheetJSON(frameOverride: ["idle": [badFrame, Self.blankFrame]])
         #expect(throws: GhostSheet.ParseError.self) { try GhostSheet.parse(data) }
     }
@@ -97,7 +98,7 @@ import Testing
         }
         let hexes = ["#5A2A1F", "#D97757", "#BF5F42", "#2B1712", "#F6C453"]
         let obj: [String: Any] = [
-            "size": 16,
+            "size": GhostSheet.size,
             "palettes": ["warm": hexes, "cool": hexes],
             "frames": frames,
             "fps": ["idle": 2, "working": 1.5, "needs": 4, "done": 1],
@@ -113,7 +114,7 @@ import Testing
 
     @Test func outOfRangeDigitThrows() {
         var badFrame = Self.blankFrame
-        badFrame[0] = "9" + String(repeating: ".", count: 15)
+        badFrame[0] = "9" + String(repeating: ".", count: GhostSheet.size - 1)
         let data = Self.sheetJSON(frameOverride: ["idle": [badFrame, Self.blankFrame]])
         #expect(throws: GhostSheet.ParseError.self) { try GhostSheet.parse(data) }
     }

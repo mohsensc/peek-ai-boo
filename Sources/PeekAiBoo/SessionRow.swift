@@ -13,12 +13,11 @@ struct SessionRow: View {
                 GhostView(client: session.id.client, pose: session.pose, phase: nil)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(session.project)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .font(.system(size: 13, weight: .semibold))
                     if let tool = session.tool {
                         Text(tool)
                             .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.7))
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                     if let note = session.note {
@@ -36,16 +35,19 @@ struct SessionRow: View {
                         TimelineView(.periodic(from: .now, by: 1)) { context in
                             Text(elapsedText(from: start, to: context.date))
                                 .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.6))
+                                .foregroundStyle(.secondary)
                         }
                     }
                     if let usage = session.usage {
                         Text(usageText(usage))
                             .font(.system(size: 10))
-                            .foregroundStyle(.white.opacity(0.6))
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
+            .padding(.horizontal, 4)
+            .frame(height: 28)
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
     }

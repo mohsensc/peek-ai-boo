@@ -27,8 +27,14 @@ struct GhostView: View {
     /// to animate here.
     private var frameIndex: Int {
         guard let phase else { return 0 }
-        let fps = Store.shared.sheet.fps[pose] ?? 1
-        return Int(phase * fps) % 2
+        return Int(phase * Self.fps(for: pose)) % 2
+    }
+
+    /// A pose's baked-in flip rate, for anything that needs to know how
+    /// often a moving ghost actually changes frames (the pill's animation
+    /// cadence, so it doesn't wake up faster than the sprite needs).
+    static func fps(for pose: GhostPose) -> Double {
+        Store.shared.sheet.fps[pose] ?? 1
     }
 
     /// Loads ghost.json and pre-renders every palette/pose/frame combination

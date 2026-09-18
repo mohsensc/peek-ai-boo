@@ -28,10 +28,19 @@ public struct Session: Sendable, Equatable, Identifiable {
     public var permissionNotified: Bool
     public var usage: Usage?
     public var note: String?
+    /// ts of the event that most recently put this session into needsYou (a
+    /// fresh ping, not just a continuing one — see foldShownState/beginPrompt).
+    /// 0 rather than optional: a path that forgets to set it makes the ghost
+    /// never wave (loud, visible in a capture) instead of waving forever
+    /// (the exact bug this exists to fix).
+    public var needsYouWaveStart: Int64
 
     /// What `apply` would show without an open prompt or permission ping
     /// folded in. Not part of the seam, only SessionStore reads it.
     var baseState: SessionState
+
+    /// How long the needsYou wave plays before holding still on frame 0.
+    public static let needsYouWaveMs: Int64 = 5_000
 
     public var pose: GhostPose {
         switch state {
@@ -42,19 +51,23 @@ public struct Session: Sendable, Equatable, Identifiable {
         }
     }
 
-    /// idle: under 20s since lastEvent. working: always. needsYou, done: while unseen.
+    /// idle: under 20s since lastEvent. working: always. needsYou: unseen and
+    /// still within the short wave that started at needsYouWaveStart — after
+    /// that it holds still on the needs-you pose even though still unseen,
+    /// which is the whole CPU win (see IslandView.AnimatedGhostRow). done:
+    /// while unseen, unchanged.
     public func isMoving(nowMs: Int64) -> Bool {
         switch state {
         case .idle: return nowMs - lastEvent < 20_000
         case .working: return true
-        case .needsYou, .done: return !seen
+        case .needsYou: return !seen && nowMs - needsYouWaveStart < Session.needsYouWaveMs
+        case .done: return !seen
         }
     }
 }
 
 public enum Effect: Sendable, Equatable {
     case chirp(SessionKey, SessionState)
-    case ping(SessionKey, String)
     case watchPID(SessionKey, Int32)
     case removed(SessionKey)
 }
@@ -80,6 +93,16 @@ public struct SessionStore: Sendable, Equatable {
         sessions.values.filter { $0.state == .needsYou }.count
     }
 
+    /// Unseen "done" sessions, each worth one info ping capsule under the
+    /// pill, oldest event first. No timer behind this — it's the same
+    /// state/seen bookkeeping `ordered` already reads, so a session stays
+    /// here until `markSeen` runs, however long that takes.
+    public var infoPings: [Session] {
+        sessions.values
+            .filter { $0.state == .done && !$0.seen }
+            .sorted { $0.lastEvent < $1.lastEvent }
+    }
+
     public mutating func apply(_ e: Event) -> [Effect] {
         let key = e.key
 
@@ -93,7 +116,7 @@ public struct SessionStore: Sendable, Equatable {
                 id: key, state: .idle, seen: true, cwd: nil, project: "?",
                 term: Term(), transcript: nil, tool: nil, promptStart: nil,
                 lastEvent: e.ts, pendingPrompts: 0, permissionNotified: false,
-                usage: nil, note: nil, baseState: .idle
+                usage: nil, note: nil, needsYouWaveStart: 0, baseState: .idle
             )
         }
 
@@ -145,31 +168,40 @@ public struct SessionStore: Sendable, Equatable {
         }
 
         sessions[key] = s
-        effects.append(contentsOf: foldShownState(key, ts: e.ts, promptReason: nil))
+        effects.append(contentsOf: foldShownState(key, ts: e.ts))
         return effects
     }
 
-    /// reason goes after "<project> · ", e.g. "needs approval: Bash npm test".
-    public mutating func beginPrompt(_ key: SessionKey, reason: String, ts: Int64) -> [Effect] {
+    /// No `ts` parameter of its own for moving `lastEvent`: pendingPrompts is
+    /// desk-driven bookkeeping, not a session event, so it doesn't bump a
+    /// session in `ordered` just because a prompt opened or closed. `ts` is
+    /// still threaded through to `needsYouWaveStart`, since a new pending
+    /// prompt is exactly "a new ping" — set unconditionally (not just on a
+    /// state transition) so a second prompt arriving while already needsYou
+    /// restarts the wave same as the first one did.
+    public mutating func beginPrompt(_ key: SessionKey, ts: Int64) -> [Effect] {
         guard var s = sessions[key] else { return [] }
         s.pendingPrompts += 1
+        s.needsYouWaveStart = ts
         sessions[key] = s
-        return foldShownState(key, ts: ts, promptReason: reason)
+        return foldShownState(key, ts: ts)
     }
 
-    public mutating func endPrompt(_ key: SessionKey, ts: Int64) -> [Effect] {
+    public mutating func endPrompt(_ key: SessionKey) -> [Effect] {
         guard var s = sessions[key] else { return [] }
         s.pendingPrompts = max(0, s.pendingPrompts - 1)
         s.permissionNotified = false
         // A Stop that resolved the last pending prompt already moved this
         // to done; going back to working would leave the ghost animating
-        // forever. The design doc's state table wins over the plan's plain
-        // "becomes working" wording here.
+        // forever, so done wins here.
         if s.pendingPrompts == 0 && s.baseState != .done {
             s.baseState = .working
         }
+        // Resolving a prompt never enters needsYou, only leaves it, so this
+        // ts is never actually read — s.lastEvent is just a sane stand-in.
+        let ts = s.lastEvent
         sessions[key] = s
-        return foldShownState(key, ts: ts, promptReason: nil)
+        return foldShownState(key, ts: ts)
     }
 
     public mutating func markSeen(_ key: SessionKey) {
@@ -188,17 +220,28 @@ public struct SessionStore: Sendable, Equatable {
         sessions[key]?.note = note
     }
 
-    /// Soonest moment an idle ghost stops moving, for one asyncAfter.
+    /// Soonest moment a currently-moving ghost goes still on its own, for one
+    /// asyncAfter: an idle ghost 20s after its last event, or a needsYou
+    /// ghost `needsYouWaveMs` after its wave started. Either way the caller
+    /// (AppModel.scheduleStillCheck) just needs one wakeup, not a timer.
     public func nextStillAt(nowMs: Int64) -> Int64? {
-        sessions.values
+        let idleDeadlines = sessions.values
             .filter { $0.state == .idle && $0.isMoving(nowMs: nowMs) }
             .map { $0.lastEvent + 20_000 }
-            .min()
+        let waveDeadlines = sessions.values
+            .filter { $0.state == .needsYou && $0.isMoving(nowMs: nowMs) }
+            .map { $0.needsYouWaveStart + Session.needsYouWaveMs }
+        return (idleDeadlines + waveDeadlines).min()
     }
 
     /// Recomputes the shown state from pendingPrompts/permissionNotified and
-    /// emits chirp+ping only when it newly enters needsYou or done.
-    private mutating func foldShownState(_ key: SessionKey, ts: Int64, promptReason: String?) -> [Effect] {
+    /// emits a chirp only when it newly enters needsYou or done. Whether to
+    /// show a ping capsule for that is derived state, not an effect here —
+    /// see Approvals.pending and SessionStore.infoPings. `ts` backs
+    /// needsYouWaveStart on a fresh entry into needsYou (permission_prompt
+    /// Notification, the only path into needsYou that doesn't already go
+    /// through beginPrompt's own unconditional set).
+    private mutating func foldShownState(_ key: SessionKey, ts: Int64) -> [Effect] {
         guard var s = sessions[key] else { return [] }
         let newShown: SessionState = (s.pendingPrompts > 0 || s.permissionNotified) ? .needsYou : s.baseState
         defer { sessions[key] = s }
@@ -208,15 +251,9 @@ public struct SessionStore: Sendable, Equatable {
         if newShown == .needsYou || newShown == .done {
             s.seen = false
             effects.append(.chirp(key, newShown))
-            let text: String
-            if newShown == .done {
-                text = "\(s.project) · done"
-            } else if let promptReason {
-                text = "\(s.project) · \(promptReason)"
-            } else {
-                text = "\(s.project) · needs you"
-            }
-            effects.append(.ping(key, text))
+        }
+        if newShown == .needsYou {
+            s.needsYouWaveStart = ts
         }
         s.state = newShown
         return effects

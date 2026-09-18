@@ -33,6 +33,7 @@ let model = AppModel(
     home: ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory()
 )
 model.features = features
+model.approvals = features.compactMap { $0 as? Approvals }.first
 
 let eventQueue = DispatchQueue(label: "com.mohsensc.peekaiboo.events")
 let eventServer = try! LineServer(path: paths.events, queue: eventQueue) { data, connection in
@@ -46,11 +47,41 @@ let eventServer = try! LineServer(path: paths.events, queue: eventQueue) { data,
 // Held for the app's lifetime; nothing else references it.
 _ = eventServer
 
+DebugCapture.printGeometry = CommandLine.arguments.contains("--print-geometry")
+
 let panel = NotchPanel(app: model)
 panel.show()
 
 for feature in features {
     feature.start(app: model)
+}
+
+// For screenshot scripts, which can't send the island a synthetic click:
+// starts it open instead of waiting for one, and --open-other reaches
+// into a question card's Other field the same way.
+if CommandLine.arguments.contains("--open") {
+    model.isOpen = true
+}
+if CommandLine.arguments.contains("--open-other") {
+    model.debugOpenOtherOnQuestion = true
+}
+if CommandLine.arguments.contains("--expand-ping") {
+    model.debugExpandFirstQuestion = true
+}
+if let i = CommandLine.arguments.firstIndex(of: "--other-text"), i + 1 < CommandLine.arguments.count {
+    model.debugOtherText = CommandLine.arguments[i + 1]
+}
+if CommandLine.arguments.contains("--preselect-multi") {
+    model.debugPreselectMulti = true
+}
+if CommandLine.arguments.contains("--open-settings") {
+    features.compactMap({ $0 as? Sounds }).first?.showSettings(app: model, raised: true)
+}
+// Same, without the screenshot-only raise -- for capturing/verifying that
+// normal use (the menu item takes this same path) really does get the
+// standard window level, not just reading the source and trusting it.
+if CommandLine.arguments.contains("--open-settings-normal") {
+    features.compactMap({ $0 as? Sounds }).first?.showSettings(app: model)
 }
 
 app.run()

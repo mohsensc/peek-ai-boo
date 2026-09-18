@@ -132,8 +132,17 @@ private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async
 
 private struct TimedOut: Error {}
 
-private func stop(_ agent: String) -> Event {
-    Event(client: .claude, event: "Stop", agent: agent, ts: nowMs() + 1)
+/// `ts` defaults to "now", which is fine when nothing else in the test
+/// pins down a specific moment. Resolution only requires the book's own
+/// `e.ts > p.ts` (see ApprovalBook.apply), not "now" specifically -- a
+/// caller resolving a known prompt should say so explicitly (`p.ts + 1`)
+/// rather than lean on the wall clock having moved on since. Under heavy
+/// load a fresh `nowMs()` read can land on the exact same millisecond a
+/// fixture's own ts already used (coarse clock ticks under CPU pressure),
+/// which is indistinguishable from "not later" to the book and silently
+/// leaves the prompt open -- this bit typedAnswerNeverSentAfterTheTerminalAnswers.
+private func stop(_ agent: String, ts: Int64 = nowMs() + 1) -> Event {
+    Event(client: .claude, event: "Stop", agent: agent, ts: ts)
 }
 
 private func post(_ agent: String, tool: String, input: JSONValue, ts: Int64) -> Event {
@@ -144,7 +153,18 @@ private func post(_ agent: String, tool: String, input: JSONValue, ts: Int64) ->
 private let fixtureApproval = fixture("claude-approval.jsonl").path
 private let fixtureQuestion = fixture("claude-question.jsonl").path
 
-@Suite @MainActor struct ApprovalDeskTests {
+// Serialized: every test here spawns 1-3 real OS processes connecting to a
+// unix socket. Run concurrently with the rest of this file (swift-testing's
+// default), the aggregate process/socket churn across ~17 tests occasionally
+// produced an ENOTCONN on one connection's own write under nothing more than
+// this suite's own normal load -- reproduced on a plain, unloaded
+// `swift test` run, not just under synthetic CPU pressure. Isolating any one
+// of the three connections in notOursIsHungUpOn never failed alone or in
+// pairs, only as part of the full concurrent suite, which points at
+// scheduling pressure across tests rather than a bug in any one of them.
+// Serializing doesn't touch what's asserted, just removes the concurrency
+// that triggers it.
+@Suite(.serialized) @MainActor struct ApprovalDeskTests {
     @Test func notchAllowReachesTheHook() async throws {
         let rig = try Rig()
         defer { rig.close() }
@@ -219,10 +239,16 @@ private let fixtureQuestion = fixture("claude-question.jsonl").path
                      "tool_input": ["command": "npm test", "description": "Run the test suite"]],
         ]])
         let hook = try rig.fakeHook(["send", line])
+        // Every other test in this file waits on some rig state before
+        // checking the hook's output, which gives the main-actor dispatch
+        // a chance to run. This one didn't, so the whole 5s output timeout
+        // had to cover process spawn + connect + dispatch with no sync
+        // point of its own -- flaky under load. Wait for the thing the test
+        // actually cares about (the desk saw the request) first.
+        try await waitUntil { rig.ingested.contains { $0.event == "PermissionRequest" } }
         #expect(try await hook.output() == "<EOF, no reply>\n")
         #expect(rig.pending.isEmpty)
         #expect(rig.opened.isEmpty)
-        #expect(rig.ingested.contains { $0.event == "PermissionRequest" })
     }
 
     @Test func hookDiesMidWait() async throws {
@@ -240,8 +266,9 @@ private let fixtureQuestion = fixture("claude-question.jsonl").path
         #expect(rig.pending.count == 1)
         #expect(rig.ended.isEmpty)
 
-        // Whatever the terminal did next clears it.
-        rig.feed(stop("sess-approval"))
+        // Whatever the terminal did next clears it. ts is relative to the
+        // prompt's own, not the wall clock -- see stop(_:ts:).
+        rig.feed(stop("sess-approval", ts: p.ts + 1))
         #expect(rig.pending.isEmpty)
         #expect(rig.ended.map(\.id) == [p.id])
     }
@@ -342,6 +369,44 @@ private let fixtureQuestion = fixture("claude-question.jsonl").path
         )
         #expect(obj["decision"] == "deny")
         #expect(obj["message"] == #"User has answered your questions: "Which database should the cache use?"="Redis", "Which environments get it?"="dev, prod". You can now continue with the user's answers in mind."#)
+    }
+
+    @Test func typedAnswerSentOnceReachesTheHook() async throws {
+        let rig = try Rig()
+        defer { rig.close() }
+        let hook = try rig.fakeHook(["send", fixtureQuestion])
+        try await waitUntil { rig.pending.count == 1 }
+        let p = rig.pending[0]
+        let qs = try #require(p.questions)
+
+        let message = Question.answerMessage(qs, answers: [[], []], typed: [0: "something else"])
+        #expect(rig.desk.answer(p.id, .deny(message: message)) == p)
+        let reply = try await hook.output()
+        let obj = try #require(JSONSerialization.jsonObject(with: Data(reply.utf8)) as? [String: String])
+        #expect(obj["message"]?.contains(#""something else""#) == true)
+
+        // Second send, or a click racing the first: nothing more goes out.
+        #expect(rig.desk.answer(p.id, .deny(message: message)) == nil)
+        #expect(rig.desk.answer(p.id, .allow) == nil)
+    }
+
+    @Test func typedAnswerNeverSentAfterTheTerminalAnswers() async throws {
+        let rig = try Rig()
+        defer { rig.close() }
+        let hook = try rig.fakeHook(["send", fixtureQuestion])
+        try await waitUntil { rig.pending.count == 1 }
+        let p = rig.pending[0]
+
+        // The terminal answered first: Stop resolves the prompt before the
+        // notch's Send got clicked. ts is relative to the prompt's own --
+        // see stop(_:ts:).
+        rig.feed(stop("sess-question", ts: p.ts + 1))
+        #expect(rig.pending.isEmpty)
+        #expect(try await hook.output() == "<EOF, no reply>\n")
+
+        let qs = try #require(p.questions)
+        let message = Question.answerMessage(qs, answers: [[], []], typed: [0: "too late"])
+        #expect(rig.desk.answer(p.id, .deny(message: message)) == nil)
     }
 
     // MARK: the real hook

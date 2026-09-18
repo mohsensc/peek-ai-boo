@@ -88,4 +88,58 @@ private let color = Question(
         let message = Question.answerMessage([color, toppings], answers: [["Red"], ["Cheese", "Basil"]])
         #expect(message == #"User has answered your questions: "Which color?"="Red", "Which toppings?"="Cheese, Basil". You can now continue with the user's answers in mind."#)
     }
+
+    // MARK: "Other" typed text
+
+    @Test func cleanTypedAnswerFlattensNewlines() {
+        #expect(Question.cleanTypedAnswer("first line\r\nsecond\nthird\rfourth") == "first line second third fourth")
+    }
+
+    @Test func cleanTypedAnswerKeepsUnicode() throws {
+        let clean = try #require(Question.cleanTypedAnswer("café 🎉 日本語"))
+        #expect(clean == "café 🎉 日本語")
+        #expect(Question.escapeTypedAnswer(clean) == clean)   // nothing to escape
+    }
+
+    @Test func cleanTypedAnswerRejectsEmptyOrWhitespaceOnly() {
+        #expect(Question.cleanTypedAnswer("") == nil)
+        #expect(Question.cleanTypedAnswer("   ") == nil)
+        #expect(Question.cleanTypedAnswer("\n\t  \r") == nil)
+    }
+
+    @Test func cleanTypedAnswerCapsLength() {
+        let long = String(repeating: "a", count: Question.typedAnswerCap + 40)
+        #expect(Question.cleanTypedAnswer(long) == String(repeating: "a", count: Question.typedAnswerCap))
+    }
+
+    @Test func escapeTypedAnswerEscapesBackslashBeforeQuote() throws {
+        let clean = try #require(Question.cleanTypedAnswer(#"He said "go" and used a\b"#))
+        #expect(Question.escapeTypedAnswer(clean) == #"He said \"go\" and used a\\b"#)
+    }
+
+    @Test func answerMessageEncodesTypedAnswerWithQuotes() {
+        let message = Question.answerMessage([color], answers: [[]], typed: [0: #"the "big" one"#])
+        #expect(message == #"User has answered your questions: "Which color?"="the \"big\" one". You can now continue with the user's answers in mind."#)
+    }
+
+    @Test func answerMessageReplacesPicksForSingleSelect() {
+        // Single-choice: typed text stands alone, any picked option is dropped.
+        let message = Question.answerMessage([color], answers: [["Red"]], typed: [0: "Mauve"])
+        #expect(message == #"User has answered your questions: "Which color?"="Mauve". You can now continue with the user's answers in mind."#)
+    }
+
+    @Test func answerMessageAddsTypedAnswerAlongsideMultiSelectPicks() {
+        let toppings = Question(
+            question: "Which toppings?", header: "Toppings",
+            options: [.init(label: "Cheese", description: "")],
+            multiSelect: true
+        )
+        let message = Question.answerMessage([toppings], answers: [["Cheese"]], typed: [0: "  smoked salmon  "])
+        #expect(message == #"User has answered your questions: "Which toppings?"="Cheese, smoked salmon". You can now continue with the user's answers in mind."#)
+    }
+
+    @Test func answerMessageIgnoresEmptyOrMissingTypedAnswer() {
+        let message = Question.answerMessage([color], answers: [["Red"]], typed: [0: "   "])
+        #expect(message == Question.answerMessage([color], answers: [["Red"]]))
+    }
 }
